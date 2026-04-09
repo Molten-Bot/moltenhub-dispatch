@@ -1,0 +1,84 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"path/filepath"
+	"syscall"
+	"time"
+
+	"github.com/moltenbot000/moltenhub-dispatch/internal/app"
+	"github.com/moltenbot000/moltenhub-dispatch/internal/hub"
+	"github.com/moltenbot000/moltenhub-dispatch/internal/web"
+)
+
+func main() {
+	settings := app.DefaultSettings()
+	if err := os.MkdirAll(settings.DataDir, 0o755); err != nil {
+		log.Fatalf("create data directory: %v", err)
+	}
+
+	store, err := app.NewStore(filepath.Join(settings.DataDir, "state.json"), settings)
+	if err != nil {
+		log.Fatalf("initialize store: %v", err)
+	}
+
+	client := hub.NewClient(store.Snapshot().Settings.HubURL)
+	service := app.NewService(store, client)
+
+	serverUI, err := web.New(service)
+	if err != nil {
+		log.Fatalf("create web server: %v", err)
+	}
+
+	httpServer := &http.Server{
+		Addr:              store.Snapshot().Settings.ListenAddr,
+		Handler:           serverUI.Handler(),
+		ReadHeaderTimeout: 10 * time.Second,
+	}
+
+	rootCtx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
+	go runPoller(rootCtx, service)
+
+	go func() {
+		log.Printf("listening on %s", httpServer.Addr)
+		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("http server failed: %v", err)
+		}
+	}()
+
+	<-rootCtx.Done()
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer shutdownCancel()
+
+	if err := service.MarkOffline(shutdownCtx, "process shutdown"); err != nil {
+		log.Printf("mark offline: %v", err)
+	}
+	if err := httpServer.Shutdown(shutdownCtx); err != nil {
+		log.Printf("shutdown http server: %v", err)
+	}
+}
+
+func runPoller(ctx context.Context, service *app.Service) {
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			pollCtx, cancel := context.WithTimeout(ctx, 35*time.Second)
+			if err := service.PollOnce(pollCtx); err != nil {
+				log.Printf("poll error: %v", err)
+			}
+			cancel()
+		}
+	}
+}

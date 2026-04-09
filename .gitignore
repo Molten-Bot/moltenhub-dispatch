@@ -1,0 +1,6 @@
+data/
+dist/
+bin/
+coverage.out
+core.*
+.moltenhub-agents-*.md

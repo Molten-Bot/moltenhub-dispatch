@@ -1,0 +1,208 @@
+package app
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/moltenbot000/moltenhub-dispatch/internal/hub"
+)
+
+type fakeHubClient struct {
+	bindResponse        hub.BindResponse
+	updateMetadataCalls []hub.UpdateMetadataRequest
+	publishCalls        []hub.PublishRequest
+	offlineCalls        []hub.OfflineRequest
+	pullMessage         hub.PullResponse
+	pullOK              bool
+	pullErr             error
+	publishErr          error
+}
+
+func (f *fakeHubClient) BindAgent(_ context.Context, req hub.BindRequest) (hub.BindResponse, error) {
+	return f.bindResponse, nil
+}
+
+func (f *fakeHubClient) UpdateMetadata(_ context.Context, _ string, req hub.UpdateMetadataRequest) (map[string]any, error) {
+	f.updateMetadataCalls = append(f.updateMetadataCalls, req)
+	return map[string]any{"status": "ok"}, nil
+}
+
+func (f *fakeHubClient) GetCapabilities(_ context.Context, _ string) (map[string]any, error) {
+	return map[string]any{"advertised_skills": []any{}}, nil
+}
+
+func (f *fakeHubClient) PublishOpenClaw(_ context.Context, _ string, req hub.PublishRequest) (hub.PublishResponse, error) {
+	f.publishCalls = append(f.publishCalls, req)
+	if f.publishErr != nil {
+		return hub.PublishResponse{}, f.publishErr
+	}
+	return hub.PublishResponse{MessageID: "message-1"}, nil
+}
+
+func (f *fakeHubClient) PullOpenClaw(_ context.Context, _ string, _ time.Duration) (hub.PullResponse, bool, error) {
+	return f.pullMessage, f.pullOK, f.pullErr
+}
+
+func (f *fakeHubClient) AckOpenClaw(_ context.Context, _ string, _ string) error {
+	return nil
+}
+
+func (f *fakeHubClient) NackOpenClaw(_ context.Context, _ string, _ string) error {
+	return nil
+}
+
+func (f *fakeHubClient) MarkOffline(_ context.Context, _ string, req hub.OfflineRequest) error {
+	f.offlineCalls = append(f.offlineCalls, req)
+	return nil
+}
+
+func TestBindAndRegisterAdvertisesDispatchSkills(t *testing.T) {
+	t.Parallel()
+
+	service, fake := newTestService(t)
+	fake.bindResponse = hub.BindResponse{
+		AgentToken: "agent-token",
+		AgentUUID:  "agent-uuid",
+		AgentURI:   "molten://dispatch/agent",
+		Handle:     "dispatch-agent",
+		APIBase:    "https://na.hub.molten.bot",
+	}
+
+	err := service.BindAndRegister(context.Background(), BindProfile{
+		HubURL:          "https://na.hub.molten.bot",
+		BindToken:       "bind-token",
+		Handle:          "dispatch-agent",
+		ProfileMarkdown: "Dispatches skill requests to connected agents.",
+		LLM:             "openai/gpt-5.4",
+		Harness:         "moltenhub-dispatch@test",
+	})
+	if err != nil {
+		t.Fatalf("bind and register: %v", err)
+	}
+
+	if len(fake.updateMetadataCalls) != 1 {
+		t.Fatalf("expected metadata update, got %d", len(fake.updateMetadataCalls))
+	}
+	skills, ok := fake.updateMetadataCalls[0].Metadata["skills"].([]map[string]string)
+	if !ok {
+		t.Fatalf("unexpected skills type: %T", fake.updateMetadataCalls[0].Metadata["skills"])
+	}
+	if len(skills) != 2 {
+		t.Fatalf("expected 2 advertised skills, got %d", len(skills))
+	}
+
+	state := service.store.Snapshot()
+	if state.Session.AgentToken != "agent-token" {
+		t.Fatalf("expected persisted token, got %q", state.Session.AgentToken)
+	}
+}
+
+func TestHandleDownstreamFailureSendsDetailedFailureAndQueuesFollowUp(t *testing.T) {
+	t.Parallel()
+
+	service, fake := newTestService(t)
+	err := service.store.Update(func(state *AppState) error {
+		state.Session.AgentToken = "agent-token"
+		state.Session.AgentUUID = "self-uuid"
+		state.Session.AgentURI = "molten://dispatch/self"
+		state.ConnectedAgents = []ConnectedAgent{
+			{
+				ID:              "reviewer",
+				Name:            "reviewer",
+				AgentUUID:       "reviewer-uuid",
+				FailureReviewer: true,
+			},
+		}
+		state.PendingTasks = []PendingTask{
+			{
+				ID:                "task-1",
+				ChildRequestID:    "child-req",
+				OriginalSkillName: "run_task",
+				CallerAgentUUID:   "caller-uuid",
+				CallerRequestID:   "parent-req",
+				Repo:              "/tmp/repo",
+				LogPath:           filepath.Join(service.settings.DataDir, "logs", "task-1.log"),
+				CreatedAt:         time.Now().Add(-time.Minute),
+				ExpiresAt:         time.Now().Add(time.Minute),
+			},
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("seed store: %v", err)
+	}
+
+	err = os.WriteFile(filepath.Join(service.settings.DataDir, "logs", "task-1.log"), []byte("boom"), 0o644)
+	if err != nil {
+		t.Fatalf("write log: %v", err)
+	}
+
+	message := hub.PullResponse{
+		DeliveryID:    "delivery-1",
+		FromAgentUUID: "worker-uuid",
+		OpenClawMessage: hub.OpenClawMessage{
+			Type:        "skill_result",
+			SkillName:   "run_task",
+			RequestID:   "child-req",
+			ReplyTo:     "parent-req",
+			OK:          boolPtr(false),
+			Error:       "task execution failed",
+			ErrorDetail: map[string]any{"stderr": "panic: boom"},
+			Payload:     map[string]any{"status": "failed"},
+		},
+	}
+
+	if err := service.handleInboundMessage(context.Background(), message); err != nil {
+		t.Fatalf("handle inbound message: %v", err)
+	}
+
+	if len(fake.publishCalls) != 2 {
+		t.Fatalf("expected caller failure + follow-up publish, got %d", len(fake.publishCalls))
+	}
+
+	failureMessage := fake.publishCalls[0].Message
+	if failureMessage.Type != "skill_result" {
+		t.Fatalf("unexpected caller message type: %s", failureMessage.Type)
+	}
+	if failureMessage.Error == "" {
+		t.Fatal("expected detailed failure error")
+	}
+
+	followUpMessage := fake.publishCalls[1].Message
+	if followUpMessage.SkillName != failureReviewSkillName {
+		t.Fatalf("unexpected follow-up skill: %s", followUpMessage.SkillName)
+	}
+
+	state := service.store.Snapshot()
+	if len(state.FollowUpTasks) != 1 {
+		t.Fatalf("expected 1 follow-up task, got %d", len(state.FollowUpTasks))
+	}
+	if len(state.PendingTasks) != 0 {
+		t.Fatalf("expected task to be cleared, got %d pending", len(state.PendingTasks))
+	}
+	if got := state.FollowUpTasks[0].RunConfig.Repos; len(got) != 1 || got[0] != "/tmp/repo" {
+		t.Fatalf("unexpected run config repos: %#v", got)
+	}
+}
+
+func newTestService(t *testing.T) (*Service, *fakeHubClient) {
+	t.Helper()
+
+	dir := t.TempDir()
+	settings := DefaultSettings()
+	settings.DataDir = dir
+	store, err := NewStore(filepath.Join(dir, "state.json"), settings)
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+
+	fake := &fakeHubClient{}
+	service := NewService(store, fake)
+	if err := os.MkdirAll(filepath.Join(dir, "logs"), 0o755); err != nil {
+		t.Fatalf("create logs dir: %v", err)
+	}
+	return service, fake
+}

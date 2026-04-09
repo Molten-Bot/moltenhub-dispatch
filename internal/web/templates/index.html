@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MoltenHub Dispatch</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">MoltenHub Agent Console</p>
+        <h1>Register once, route skill calls, keep failures actionable.</h1>
+        <p class="lede">This app binds to Molten Hub, advertises dispatch skills, forwards work to connected agents, returns explicit failure results, and queues log-review follow-ups when tasks break.</p>
+      </div>
+      <aside class="status-card">
+        <h2>Runtime</h2>
+        <dl>
+          <div><dt>Hub</dt><dd>{{if .State.Session.APIBase}}{{.State.Session.APIBase}}{{else}}{{.State.Settings.HubURL}}{{end}}</dd></div>
+          <div><dt>Handle</dt><dd>{{if .State.Session.Handle}}{{.State.Session.Handle}}{{else}}Not bound{{end}}</dd></div>
+          <div><dt>Agent UUID</dt><dd>{{if .State.Session.AgentUUID}}{{.State.Session.AgentUUID}}{{else}}-{{end}}</dd></div>
+          <div><dt>Follow-up reviewer</dt><dd>{{if .State.Settings.FollowUpAgentRef}}{{.State.Settings.FollowUpAgentRef}}{{else}}Auto-detect flagged agent{{end}}</dd></div>
+        </dl>
+      </aside>
+    </header>
+
+    {{if .Flash}}
+    <section class="flash {{if .IsError}}flash-error{{else}}flash-info{{end}}">
+      {{.Flash}}
+    </section>
+    {{end}}
+
+    <section class="grid two-up">
+      <article class="panel">
+        <h2>1. Bind Agent</h2>
+        <form method="post" action="/bind" class="stack">
+          <label>Hub URL<input name="hub_url" value="{{.State.Settings.HubURL}}" required></label>
+          <label>Bind Token<input name="bind_token" required></label>
+          <label>Preferred Handle<input name="handle" placeholder="dispatch-agent"></label>
+          <label>Profile Markdown<textarea name="profile_markdown" rows="4">Dispatches skill requests to connected agents and reports failures with follow-up remediation tasks.</textarea></label>
+          <label>LLM<input name="llm" placeholder="openai/gpt-5.4"></label>
+          <label>Harness<input name="harness" placeholder="moltenhub-dispatch@local"></label>
+          <button type="submit">Bind And Register</button>
+        </form>
+      </article>
+
+      <article class="panel">
+        <h2>2. Dispatcher Settings</h2>
+        <form method="post" action="/settings" class="stack">
+          <label>Follow-up Agent Ref<input name="follow_up_agent_ref" value="{{.State.Settings.FollowUpAgentRef}}" placeholder="reviewer UUID, URI, id, or name"></label>
+          <p class="hint">Leave blank to use the first connected agent marked as a failure reviewer.</p>
+          <button type="submit">Save Settings</button>
+        </form>
+      </article>
+    </section>
+
+    <section class="grid two-up">
+      <article class="panel">
+        <h2>3. Connected Agents</h2>
+        <form method="post" action="/agents" class="stack">
+          <label>ID<input name="id" placeholder="worker-a"></label>
+          <label>Name<input name="name" placeholder="Worker A"></label>
+          <label>Agent UUID<input name="agent_uuid" placeholder="uuid"></label>
+          <label>Agent URI<input name="agent_uri" placeholder="molten://agent/worker-a"></label>
+          <label>Default Skill<input name="default_skill" placeholder="run_task"></label>
+          <label>Repo<input name="repo" placeholder="/tmp/repo"></label>
+          <label>Skills<textarea name="skills" rows="3" placeholder="run_task:Execute coding tasks, review_failure_logs:Fix broken tasks"></textarea></label>
+          <label>Notes<textarea name="notes" rows="3" placeholder="Trust path already approved in hub."></textarea></label>
+          <label class="checkbox"><input type="checkbox" name="failure_reviewer"> This agent should receive remediation follow-ups.</label>
+          <button type="submit">Save Connected Agent</button>
+        </form>
+      </article>
+
+      <article class="panel">
+        <h2>4. Manual Dispatch</h2>
+        <form method="post" action="/dispatch" class="stack">
+          <label>Target Agent Ref<input name="target_agent_ref" placeholder="worker-a or molten://agent/worker-a"></label>
+          <label>Skill Name<input name="skill_name" placeholder="run_task" required></label>
+          <label>Repo<input name="repo" placeholder="/tmp/repo"></label>
+          <label>Log Paths<textarea name="log_paths" rows="2" placeholder="/tmp/repo/logs/build.log"></textarea></label>
+          <label>Payload Format
+            <select name="payload_format">
+              <option value="json">json</option>
+              <option value="markdown">markdown</option>
+            </select>
+          </label>
+          <label>Payload<textarea name="payload" rows="7" placeholder='{"task":"Run the fix", "repos":["/tmp/repo"]}' required></textarea></label>
+          <label>Timeout Seconds<input name="timeout_seconds" value="300"></label>
+          <button type="submit">Dispatch Task</button>
+        </form>
+      </article>
+    </section>
+
+    <section class="grid two-up">
+      <article class="panel">
+        <h2>Connected Agent Directory</h2>
+        {{if .State.ConnectedAgents}}
+        <div class="list">
+          {{range .State.ConnectedAgents}}
+          <article class="card">
+            <h3>{{if .Name}}{{.Name}}{{else}}{{.ID}}{{end}}</h3>
+            <p><strong>Ref:</strong> {{if .ID}}{{.ID}}{{else}}-{{end}}</p>
+            <p><strong>UUID:</strong> {{if .AgentUUID}}{{.AgentUUID}}{{else}}-{{end}}</p>
+            <p><strong>URI:</strong> {{if .AgentURI}}{{.AgentURI}}{{else}}-{{end}}</p>
+            <p><strong>Default skill:</strong> {{if .DefaultSkill}}{{.DefaultSkill}}{{else}}-{{end}}</p>
+            <p><strong>Failure reviewer:</strong> {{if .FailureReviewer}}yes{{else}}no{{end}}</p>
+            <pre>{{toJSON .AdvertisedSkills}}</pre>
+          </article>
+          {{end}}
+        </div>
+        {{else}}
+        <p class="empty">No connected agents configured yet.</p>
+        {{end}}
+      </article>
+
+      <article class="panel">
+        <h2>Pending Tasks</h2>
+        {{if .State.PendingTasks}}
+        <div class="list">
+          {{range .State.PendingTasks}}
+          <article class="card">
+            <h3>{{.ID}}</h3>
+            <p><strong>Skill:</strong> {{.OriginalSkillName}}</p>
+            <p><strong>Target:</strong> {{if .TargetAgentUUID}}{{.TargetAgentUUID}}{{else}}{{.TargetAgentURI}}{{end}}</p>
+            <p><strong>Expires:</strong> {{formatTime .ExpiresAt}}</p>
+            <p><strong>Log:</strong> {{.LogPath}}</p>
+          </article>
+          {{end}}
+        </div>
+        {{else}}
+        <p class="empty">No tasks are waiting on downstream results.</p>
+        {{end}}
+      </article>
+    </section>
+
+    <section class="grid two-up">
+      <article class="panel">
+        <h2>Queued Follow-Ups</h2>
+        {{if .State.FollowUpTasks}}
+        <div class="list">
+          {{range .State.FollowUpTasks}}
+          <article class="card">
+            <h3>{{.ID}}</h3>
+            <p><strong>Status:</strong> {{.Status}}</p>
+            <p><strong>Failed task:</strong> {{.FailedTaskID}}</p>
+            <p><strong>Repo:</strong> {{.FailedRepo}}</p>
+            <p><strong>Log paths:</strong></p>
+            <pre>{{toJSON .LogPaths}}</pre>
+            <p><strong>Run config:</strong></p>
+            <pre>{{toJSON .RunConfig}}</pre>
+            {{if .LastDispatchErr}}<p><strong>Dispatch error:</strong> {{.LastDispatchErr}}</p>{{end}}
+          </article>
+          {{end}}
+        </div>
+        {{else}}
+        <p class="empty">No remediation follow-ups queued.</p>
+        {{end}}
+      </article>
+
+      <article class="panel">
+        <h2>Recent Events</h2>
+        {{if .State.RecentEvents}}
+        <div class="list">
+          {{range .State.RecentEvents}}
+          <article class="card">
+            <h3>{{.Title}}</h3>
+            <p><strong>When:</strong> {{formatTime .At}}</p>
+            <p><strong>Level:</strong> {{.Level}}</p>
+            <p>{{.Detail}}</p>
+            {{if .TaskID}}<p><strong>Task:</strong> {{.TaskID}}</p>{{end}}
+            {{if .LogPath}}<p><strong>Log:</strong> {{.LogPath}}</p>{{end}}
+          </article>
+          {{end}}
+        </div>
+        {{else}}
+        <p class="empty">Runtime events will appear here.</p>
+        {{end}}
+      </article>
+    </section>
+  </main>
+</body>
+</html>
