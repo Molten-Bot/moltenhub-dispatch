@@ -1,3 +1,8 @@
+data/
+dist/
+bin/
+coverage.out
 AGENTS.md
+core.*
 .moltenhub-agents-*.md
 prompt-images/
