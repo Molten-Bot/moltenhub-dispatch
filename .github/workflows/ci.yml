@@ -1,12 +1,23 @@
-name: moltenhub-ci
+name: CI
 
 on:
+  pull_request:
   push:
     branches:
-      - "**"
-  pull_request:
+      - main
+      - "moltenhub-*"
+  workflow_dispatch:
 
 jobs:
+  repo-hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate repository contents
+        run: ./scripts/validate-repo.sh
+
   test:
     runs-on: ubuntu-latest
     steps:
