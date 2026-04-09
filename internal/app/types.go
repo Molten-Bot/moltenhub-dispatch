@@ -92,6 +92,7 @@ type FollowUpTask struct {
 	LastDispatchErr  string            `json:"last_dispatch_error"`
 	RunConfig        FollowUpRunConfig `json:"run_config"`
 	OriginalError    string            `json:"original_error"`
+	OriginalRequest  map[string]any    `json:"original_request"`
 	RequestedByAgent string            `json:"requested_by_agent"`
 }
 

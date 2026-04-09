@@ -127,6 +127,11 @@ func TestHandleDownstreamFailureSendsDetailedFailureAndQueuesFollowUp(t *testing
 				LogPath:           filepath.Join(service.settings.DataDir, "logs", "task-1.log"),
 				CreatedAt:         time.Now().Add(-time.Minute),
 				ExpiresAt:         time.Now().Add(time.Minute),
+				DispatchPayload: map[string]any{
+					"repo":      "/tmp/repo",
+					"log_paths": []string{"/tmp/original.log", "/tmp/original.log"},
+					"input":     "Issue an offline to moltenbot hub",
+				},
 			},
 		}
 		return nil
@@ -170,6 +175,13 @@ func TestHandleDownstreamFailureSendsDetailedFailureAndQueuesFollowUp(t *testing
 	if failureMessage.Error == "" {
 		t.Fatal("expected detailed failure error")
 	}
+	failurePayload, ok := failureMessage.Payload.(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected caller failure payload type: %T", failureMessage.Payload)
+	}
+	if got := failurePayload["log_paths"].([]string); len(got) != 2 || got[0] != "/tmp/original.log" {
+		t.Fatalf("unexpected caller failure log paths: %#v", failurePayload["log_paths"])
+	}
 
 	followUpMessage := fake.publishCalls[1].Message
 	if followUpMessage.SkillName != failureReviewSkillName {
@@ -185,6 +197,30 @@ func TestHandleDownstreamFailureSendsDetailedFailureAndQueuesFollowUp(t *testing
 	}
 	if got := state.FollowUpTasks[0].RunConfig.Repos; len(got) != 1 || got[0] != "/tmp/repo" {
 		t.Fatalf("unexpected run config repos: %#v", got)
+	}
+	if got := state.FollowUpTasks[0].LogPaths; len(got) != 2 || got[0] != "/tmp/original.log" || got[1] != filepath.Join(service.settings.DataDir, "logs", "task-1.log") {
+		t.Fatalf("unexpected follow-up log paths: %#v", got)
+	}
+	if got := state.FollowUpTasks[0].OriginalRequest["input"]; got != "Issue an offline to moltenbot hub" {
+		t.Fatalf("unexpected follow-up original request: %#v", state.FollowUpTasks[0].OriginalRequest)
+	}
+
+	payload, ok := followUpMessage.Payload.(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected follow-up payload type: %T", followUpMessage.Payload)
+	}
+	if got := payload["log_paths"].([]string); len(got) != 2 || got[0] != "/tmp/original.log" {
+		t.Fatalf("unexpected published follow-up log paths: %#v", payload["log_paths"])
+	}
+	originalRequest, ok := payload["original_request"].(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected original_request payload type: %T", payload["original_request"])
+	}
+	if originalRequest["skill_name"] != "run_task" {
+		t.Fatalf("unexpected original_request skill: %#v", originalRequest)
+	}
+	if originalRequest["repo"] != "/tmp/repo" {
+		t.Fatalf("unexpected original_request repo: %#v", originalRequest)
 	}
 }
 
