@@ -30,7 +30,7 @@ Key integration points:
 When a dispatched task fails, the app does all of the following:
 
 1. Writes task lifecycle details to a local log file under `data/logs/`.
-2. Sends a `skill_result` response back to the calling agent that clearly marks failure and includes the error details plus relevant log path(s).
+2. Sends a `skill_result` response back to the calling agent that clearly marks failure and includes the error details plus both the upstream failing log path(s) and the dispatcher log path.
 3. Queues a remediation follow-up task with this run config payload shape:
 
 ```json
@@ -42,7 +42,7 @@ When a dispatched task fails, the app does all of the following:
 }
 ```
 
-If a failure-reviewer agent is configured, the follow-up task is published immediately via `review_failure_logs`. Otherwise it remains queued locally with status `pending_reviewer`.
+If a failure-reviewer agent is configured, the follow-up task is published immediately via `review_failure_logs`. The follow-up includes the original request payload and both the upstream failing log paths and the dispatcher log path, so the reviewer can verify the real failure instead of reconstructing it from terminal output alone. Otherwise it remains queued locally with status `pending_reviewer`.
 
 ## Web Interface
 

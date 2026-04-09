@@ -375,6 +375,8 @@ func (s *Service) expirePendingTasks(ctx context.Context) error {
 }
 
 func (s *Service) queueFollowUp(ctx context.Context, state AppState, pending PendingTask, reason string, detail any) (FollowUpTask, error) {
+	logPaths := followUpLogPaths(pending)
+	originalRequest := cloneMap(pending.DispatchPayload)
 	task := FollowUpTask{
 		ID:              NewID("followup"),
 		CreatedAt:       time.Now().UTC(),
@@ -383,7 +385,7 @@ func (s *Service) queueFollowUp(ctx context.Context, state AppState, pending Pen
 		FailedTaskID:    pending.ID,
 		FailedSkillName: pending.OriginalSkillName,
 		FailedRepo:      fallbackRepo(pending.Repo),
-		LogPaths:        compactPaths([]string{pending.LogPath}),
+		LogPaths:        logPaths,
 		RunConfig: FollowUpRunConfig{
 			Repos:        []string{fallbackRepo(pending.Repo)},
 			BaseBranch:   "main",
@@ -391,6 +393,7 @@ func (s *Service) queueFollowUp(ctx context.Context, state AppState, pending Pen
 			Prompt:       "Review the failing log paths first, identify every root cause behind the failed task, fix the underlying issues in this repository, validate locally where possible, and summarize the verified results.",
 		},
 		OriginalError:    fmt.Sprintf("%s | detail=%v", reason, detail),
+		OriginalRequest:  originalRequest,
 		RequestedByAgent: pending.CallerAgentUUID,
 	}
 
@@ -403,6 +406,12 @@ func (s *Service) queueFollowUp(ctx context.Context, state AppState, pending Pen
 			"log_paths":      task.LogPaths,
 			"run_config":     task.RunConfig,
 			"error":          task.OriginalError,
+			"original_request": map[string]any{
+				"skill_name":     pending.OriginalSkillName,
+				"repo":           fallbackRepo(pending.Repo),
+				"payload_format": normalizePayloadFormat("", pending.DispatchPayload),
+				"payload":        originalRequest,
+			},
 		}
 		if _, err := s.hub.PublishOpenClaw(ctx, state.Session.AgentToken, hub.PublishRequest{
 			ToAgentUUID: reviewer.AgentUUID,
@@ -443,6 +452,7 @@ func (s *Service) publishFailureToCaller(ctx context.Context, state AppState, pe
 	if pending.LogPath == "" {
 		pending.LogPath = filepath.Join(s.settings.DataDir, "logs", pending.ID+".log")
 	}
+	logPaths := followUpLogPaths(pending)
 	if err := s.writeTaskLog(pending.LogPath, map[string]any{
 		"phase": "failed",
 		"error": cause.Error(),
@@ -463,10 +473,10 @@ func (s *Service) publishFailureToCaller(ctx context.Context, state AppState, pe
 			"message":      "Task failed while dispatching to a connected agent.",
 			"error":        cause.Error(),
 			"error_detail": cause.Error(),
-			"log_paths":    compactPaths([]string{pending.LogPath}),
+			"log_paths":    logPaths,
 		},
 		Error:       cause.Error(),
-		ErrorDetail: map[string]any{"log_paths": compactPaths([]string{pending.LogPath})},
+		ErrorDetail: map[string]any{"log_paths": logPaths},
 		OK:          boolPtr(false),
 		Status:      "failed",
 	}
@@ -723,6 +733,44 @@ func compactPaths(paths []string) []string {
 		out = append(out, entry)
 	}
 	return out
+}
+
+func followUpLogPaths(pending PendingTask) []string {
+	paths := make([]string, 0, 1)
+	if logPaths, ok := pending.DispatchPayload["log_paths"].([]string); ok {
+		paths = append(paths, logPaths...)
+	} else if logPaths, ok := pending.DispatchPayload["log_paths"].([]any); ok {
+		for _, entry := range logPaths {
+			if path, ok := entry.(string); ok {
+				paths = append(paths, path)
+			}
+		}
+	}
+	paths = append(paths, pending.LogPath)
+	return compactPaths(paths)
+}
+
+func cloneMap(value map[string]any) map[string]any {
+	if len(value) == 0 {
+		return nil
+	}
+	data, err := json.Marshal(value)
+	if err != nil {
+		result := make(map[string]any, len(value))
+		for key, item := range value {
+			result[key] = item
+		}
+		return result
+	}
+	var cloned map[string]any
+	if err := json.Unmarshal(data, &cloned); err != nil {
+		result := make(map[string]any, len(value))
+		for key, item := range value {
+			result[key] = item
+		}
+		return result
+	}
+	return cloned
 }
 
 func (a ConnectedAgent) NameOrRef() string {
