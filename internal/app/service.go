@@ -54,6 +54,15 @@ type baseURLSetter interface {
 
 func NewService(store *Store, hubClient HubClient) *Service {
 	snapshot := store.Snapshot()
+	if setter, ok := hubClient.(baseURLSetter); ok {
+		baseURL := strings.TrimSpace(snapshot.Session.APIBase)
+		if baseURL == "" {
+			baseURL = strings.TrimSpace(snapshot.Settings.HubURL)
+		}
+		if baseURL != "" {
+			setter.SetBaseURL(baseURL)
+		}
+	}
 	return &Service{
 		store:    store,
 		hub:      hubClient,
@@ -81,6 +90,9 @@ func (s *Service) BindAndRegister(ctx context.Context, profile BindProfile) erro
 	if err != nil {
 		return err
 	}
+	if setter, ok := s.hub.(baseURLSetter); ok && strings.TrimSpace(result.APIBase) != "" {
+		setter.SetBaseURL(result.APIBase)
+	}
 
 	metadata := map[string]any{
 		"agent_type":       "dispatch",
@@ -102,9 +114,6 @@ func (s *Service) BindAndRegister(ctx context.Context, profile BindProfile) erro
 		Metadata: metadata,
 	}); err != nil {
 		return err
-	}
-	if setter, ok := s.hub.(baseURLSetter); ok && result.APIBase != "" {
-		setter.SetBaseURL(result.APIBase)
 	}
 
 	if err := s.store.Update(func(state *AppState) error {
