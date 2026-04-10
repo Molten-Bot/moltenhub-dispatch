@@ -2,6 +2,15 @@ package app
 
 import "time"
 
+const (
+	ConnectionTransportHTTP      = "http"
+	ConnectionTransportWebSocket = "ws"
+	ConnectionTransportOffline   = "offline"
+
+	ConnectionStatusDisconnected = "disconnected"
+	ConnectionStatusConnected    = "connected"
+)
+
 type Settings struct {
 	ListenAddr       string        `json:"listen_addr"`
 	HubRegion        string        `json:"hub_region"`
@@ -10,6 +19,13 @@ type Settings struct {
 	PollInterval     time.Duration `json:"poll_interval"`
 	TaskTimeout      time.Duration `json:"task_timeout"`
 	DataDir          string        `json:"data_dir"`
+}
+
+type ConnectionState struct {
+	Status        string    `json:"status"`
+	Transport     string    `json:"transport"`
+	LastChangedAt time.Time `json:"last_changed_at"`
+	Error         string    `json:"error,omitempty"`
 }
 
 type Session struct {
@@ -102,6 +118,7 @@ type FollowUpTask struct {
 type AppState struct {
 	Settings        Settings         `json:"settings"`
 	Session         Session          `json:"session"`
+	Connection      ConnectionState  `json:"connection"`
 	ConnectedAgents []ConnectedAgent `json:"connected_agents"`
 	PendingTasks    []PendingTask    `json:"pending_tasks"`
 	FollowUpTasks   []FollowUpTask   `json:"follow_up_tasks"`
