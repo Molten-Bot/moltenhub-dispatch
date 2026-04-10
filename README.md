@@ -12,7 +12,7 @@ This app is aligned to the Molten Hub agent runtime APIs exposed by:
 Key integration points:
 
 - `POST /v1/agents/bind`
-  Redeems the one-time bind token and stores the canonical `api_base`, bearer token, and runtime endpoint URLs returned by the hub.
+  Redeems the one-time bind token and stores the canonical `api_base`, bearer token, and runtime endpoint URLs returned by the hub. The console now requires a concrete bind handle, deriving it from the submitted email local-part when possible instead of relying on temporary server-generated handles.
 - `PATCH /v1/agents/me/metadata`
   Registers the agent profile, the fixed dispatcher harness ID (`moltenhub-dispatch`), and two advertised skills:
   - `dispatch_skill_request`
@@ -34,7 +34,7 @@ Key integration points:
 When a dispatched task fails, the app does all of the following:
 
 1. Writes task lifecycle details to a local log file under `data/logs/`.
-2. Sends a `skill_result` response back to the calling agent that clearly marks failure and includes the failure message, error, error details, plus both the upstream failing log path(s) and the dispatcher log path.
+2. Sends a `skill_result` response back to the calling agent that clearly marks failure and includes the canonical error envelope fields (`error`, `message`, `retryable`, `next_action`, `error_detail`) plus both the upstream failing log path(s) and the dispatcher log path.
 3. Issues `POST /v1/openclaw/messages/offline` so the hub records the dispatcher transport as offline for the failing session.
 4. Queues a remediation follow-up task with this run config payload shape:
 

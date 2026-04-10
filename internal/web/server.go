@@ -130,6 +130,7 @@ func (s *Server) handleBind(w http.ResponseWriter, r *http.Request) {
 	form := profileFormFromRequest(r)
 	if err := s.service.BindAndRegister(r.Context(), app.BindProfile{
 		BindToken:       strings.TrimSpace(r.FormValue("bind_token")),
+		Email:           form.Email,
 		Handle:          form.Handle,
 		DisplayName:     form.DisplayName,
 		Emoji:           form.Emoji,
@@ -352,6 +353,7 @@ type bindingView struct {
 
 type agentProfileForm struct {
 	BindToken       string
+	Email           string
 	Handle          string
 	DisplayName     string
 	Emoji           string
@@ -361,6 +363,7 @@ type agentProfileForm struct {
 func profileFormFromRequest(r *http.Request) agentProfileForm {
 	return agentProfileForm{
 		BindToken:       strings.TrimSpace(r.FormValue("bind_token")),
+		Email:           strings.TrimSpace(r.FormValue("email")),
 		Handle:          strings.TrimSpace(r.FormValue("handle")),
 		DisplayName:     strings.TrimSpace(r.FormValue("display_name")),
 		Emoji:           strings.TrimSpace(r.FormValue("emoji")),
