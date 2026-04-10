@@ -938,7 +938,7 @@ func explicitFailureMessage(message string) string {
 		return "Task failed."
 	}
 	lower := strings.ToLower(message)
-	if strings.HasPrefix(lower, "task failed") || strings.HasPrefix(lower, "failed") {
+	if strings.Contains(lower, "failed") {
 		return message
 	}
 	return "Task failed: " + message
