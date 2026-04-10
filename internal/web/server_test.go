@@ -92,6 +92,10 @@ func TestHandleIndexShowsBoundProfileState(t *testing.T) {
 	server, err := New(&stubService{
 		state: app.AppState{
 			Settings: app.DefaultSettings(),
+			Connection: app.ConnectionState{
+				Status:    app.ConnectionStatusConnected,
+				Transport: app.ConnectionTransportHTTP,
+			},
 			Session: app.Session{
 				AgentToken:      "agent-token",
 				Handle:          "codex-beast",
@@ -126,6 +130,51 @@ func TestHandleIndexShowsBoundProfileState(t *testing.T) {
 	}
 	if !strings.Contains(body, `id="connection-indicator"`) {
 		t.Fatalf("expected connection indicator in page, body=%s", body)
+	}
+	if !strings.Contains(body, ">4. Manual Dispatch<") {
+		t.Fatalf("expected sub-actions when bound and connected, body=%s", body)
+	}
+	if !strings.Contains(body, `id="sub-actions-notice" class="panel" hidden`) {
+		t.Fatalf("expected sub-action notice to be hidden when bound and connected, body=%s", body)
+	}
+}
+
+func TestHandleIndexHidesSubActionsUntilBoundAndConnected(t *testing.T) {
+	t.Parallel()
+
+	server, err := New(&stubService{
+		state: app.AppState{
+			Settings: app.DefaultSettings(),
+			Connection: app.ConnectionState{
+				Status:    app.ConnectionStatusDisconnected,
+				Transport: app.ConnectionTransportOffline,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "Sub-Actions Hidden") {
+		t.Fatalf("expected hidden sub-actions notice, body=%s", body)
+	}
+	if !strings.Contains(body, `id="sub-actions" hidden`) {
+		t.Fatalf("expected sub-actions container to be hidden, body=%s", body)
+	}
+	if !strings.Contains(body, ">3. Connected Agents<") {
+		t.Fatalf("expected connected agents markup to remain available for client-side reveal, body=%s", body)
+	}
+	if !strings.Contains(body, ">4. Manual Dispatch<") {
+		t.Fatalf("expected manual dispatch markup to remain available for client-side reveal, body=%s", body)
+	}
+	if !strings.Contains(body, "until this runtime is bound to Molten Hub and connectivity is working") {
+		t.Fatalf("expected unbound gating reason, body=%s", body)
 	}
 }
 

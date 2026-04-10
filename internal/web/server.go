@@ -103,6 +103,7 @@ func (s *Server) renderIndex(w http.ResponseWriter, r *http.Request, flash strin
 		ProfileForm:     defaultProfileForm(state, form),
 		EmojiOptions:    emojiOptions(),
 		Connection:      connectionStatusView(state.Connection),
+		SubActions:      subActionState(state),
 	}
 	if view.Flash == "" {
 		view.Flash = r.URL.Query().Get("message")
@@ -325,6 +326,7 @@ type pageData struct {
 	ProfileForm     agentProfileForm
 	EmojiOptions    []string
 	Connection      connectionView
+	SubActions      subActionView
 }
 
 type connectionView struct {
@@ -333,6 +335,11 @@ type connectionView struct {
 	Label       string `json:"label"`
 	Description string `json:"description"`
 	Error       string `json:"error,omitempty"`
+}
+
+type subActionView struct {
+	Visible bool
+	Reason  string
 }
 
 type agentProfileForm struct {
@@ -416,4 +423,20 @@ func connectionStatusView(state app.ConnectionState) connectionView {
 		}
 	}
 	return view
+}
+
+func subActionState(state app.AppState) subActionView {
+	if strings.TrimSpace(state.Session.AgentToken) == "" {
+		return subActionView{
+			Visible: false,
+			Reason:  "Sub-actions stay hidden until this runtime is bound to Molten Hub and connectivity is working.",
+		}
+	}
+	if state.Connection.Status != app.ConnectionStatusConnected {
+		return subActionView{
+			Visible: false,
+			Reason:  "Sub-actions stay hidden while the Hub connection is offline or unavailable.",
+		}
+	}
+	return subActionView{Visible: true}
 }
