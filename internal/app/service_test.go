@@ -12,9 +12,15 @@ import (
 
 type fakeHubClient struct {
 	bindResponse        hub.BindResponse
+	bindRequests        []hub.BindRequest
 	updateMetadataCalls []hub.UpdateMetadataRequest
 	publishCalls        []hub.PublishRequest
 	offlineCalls        []hub.OfflineRequest
+	baseURLCalls        []string
+	currentBaseURL      string
+	expectedMetadataURL string
+	expectedPullURL     string
+	expectedOfflineURL  string
 	pullMessage         hub.PullResponse
 	pullOK              bool
 	pullErr             error
@@ -22,10 +28,18 @@ type fakeHubClient struct {
 }
 
 func (f *fakeHubClient) BindAgent(_ context.Context, req hub.BindRequest) (hub.BindResponse, error) {
+	f.bindRequests = append(f.bindRequests, req)
 	return f.bindResponse, nil
 }
 
 func (f *fakeHubClient) UpdateMetadata(_ context.Context, _ string, req hub.UpdateMetadataRequest) (map[string]any, error) {
+	if f.expectedMetadataURL != "" && f.currentBaseURL != f.expectedMetadataURL {
+		return nil, &hub.APIError{
+			StatusCode: 401,
+			Code:       "unauthorized",
+			Message:    "missing or invalid bearer token",
+		}
+	}
 	f.updateMetadataCalls = append(f.updateMetadataCalls, req)
 	return map[string]any{"status": "ok"}, nil
 }
@@ -43,6 +57,13 @@ func (f *fakeHubClient) PublishOpenClaw(_ context.Context, _ string, req hub.Pub
 }
 
 func (f *fakeHubClient) PullOpenClaw(_ context.Context, _ string, _ time.Duration) (hub.PullResponse, bool, error) {
+	if f.expectedPullURL != "" && f.currentBaseURL != f.expectedPullURL {
+		return hub.PullResponse{}, false, &hub.APIError{
+			StatusCode: 401,
+			Code:       "unauthorized",
+			Message:    "missing or invalid bearer token",
+		}
+	}
 	return f.pullMessage, f.pullOK, f.pullErr
 }
 
@@ -55,8 +76,20 @@ func (f *fakeHubClient) NackOpenClaw(_ context.Context, _ string, _ string) erro
 }
 
 func (f *fakeHubClient) MarkOffline(_ context.Context, _ string, req hub.OfflineRequest) error {
+	if f.expectedOfflineURL != "" && f.currentBaseURL != f.expectedOfflineURL {
+		return &hub.APIError{
+			StatusCode: 401,
+			Code:       "unauthorized",
+			Message:    "missing or invalid bearer token",
+		}
+	}
 	f.offlineCalls = append(f.offlineCalls, req)
 	return nil
+}
+
+func (f *fakeHubClient) SetBaseURL(baseURL string) {
+	f.currentBaseURL = baseURL
+	f.baseURLCalls = append(f.baseURLCalls, baseURL)
 }
 
 func TestBindAndRegisterAdvertisesDispatchSkills(t *testing.T) {
@@ -72,7 +105,7 @@ func TestBindAndRegisterAdvertisesDispatchSkills(t *testing.T) {
 	}
 
 	err := service.BindAndRegister(context.Background(), BindProfile{
-		HubURL:          "https://na.hub.molten.bot",
+		HubRegion:       HubRegionNA,
 		BindToken:       "bind-token",
 		Handle:          "dispatch-agent",
 		ProfileMarkdown: "Dispatches skill requests to connected agents.",
@@ -101,6 +134,86 @@ func TestBindAndRegisterAdvertisesDispatchSkills(t *testing.T) {
 	state := service.store.Snapshot()
 	if state.Session.AgentToken != "agent-token" {
 		t.Fatalf("expected persisted token, got %q", state.Session.AgentToken)
+	}
+	if state.Settings.HubRegion != HubRegionNA {
+		t.Fatalf("expected hub region %q, got %q", HubRegionNA, state.Settings.HubRegion)
+	}
+	if len(fake.bindRequests) != 1 || fake.bindRequests[0].HubURL != "https://na.hub.molten.bot" {
+		t.Fatalf("expected bind request against na runtime, got %#v", fake.bindRequests)
+	}
+}
+
+func TestBindAndRegisterUsesCanonicalAPIBaseForMetadata(t *testing.T) {
+	t.Parallel()
+
+	service, fake := newTestService(t)
+	fake.bindResponse = hub.BindResponse{
+		AgentToken: "agent-token",
+		AgentUUID:  "agent-uuid",
+		AgentURI:   "molten://dispatch/agent",
+		Handle:     "dispatch-agent",
+		APIBase:    "https://runtime.na.hub.molten.bot",
+	}
+	fake.expectedMetadataURL = fake.bindResponse.APIBase
+
+	err := service.BindAndRegister(context.Background(), BindProfile{
+		HubRegion:       HubRegionNA,
+		BindToken:       "bind-token",
+		Handle:          "dispatch-agent",
+		ProfileMarkdown: "Dispatches skill requests to connected agents.",
+	})
+	if err != nil {
+		t.Fatalf("bind and register: %v", err)
+	}
+
+	if len(fake.baseURLCalls) < 3 {
+		t.Fatalf("expected base URL to switch from hub URL to api_base, got %#v", fake.baseURLCalls)
+	}
+	if fake.baseURLCalls[0] != "https://na.hub.molten.bot" {
+		t.Fatalf("expected initial client base URL to use the selected hub runtime, got %#v", fake.baseURLCalls)
+	}
+	if fake.baseURLCalls[1] != "https://na.hub.molten.bot" {
+		t.Fatalf("expected bind request against runtime hub URL, got %#v", fake.baseURLCalls)
+	}
+	if fake.baseURLCalls[2] != fake.bindResponse.APIBase {
+		t.Fatalf("expected metadata to use api_base, got %#v", fake.baseURLCalls)
+	}
+}
+
+func TestBindAndRegisterPersistsSelectedRuntime(t *testing.T) {
+	t.Parallel()
+
+	service, fake := newTestService(t)
+	fake.bindResponse = hub.BindResponse{
+		AgentToken: "agent-token",
+		AgentUUID:  "agent-uuid",
+		AgentURI:   "molten://dispatch/agent",
+		Handle:     "dispatch-agent",
+		APIBase:    "https://eu.hub.molten.bot",
+	}
+
+	err := service.BindAndRegister(context.Background(), BindProfile{
+		HubRegion:       HubRegionEU,
+		BindToken:       "bind-token",
+		Handle:          "dispatch-agent",
+		ProfileMarkdown: "Dispatches skill requests to connected agents.",
+	})
+	if err != nil {
+		t.Fatalf("bind and register: %v", err)
+	}
+
+	state := service.store.Snapshot()
+	if state.Settings.HubRegion != HubRegionEU {
+		t.Fatalf("expected hub region %q, got %q", HubRegionEU, state.Settings.HubRegion)
+	}
+	if state.Settings.HubURL != "https://eu.hub.molten.bot" {
+		t.Fatalf("expected eu hub url, got %q", state.Settings.HubURL)
+	}
+	if state.Session.HubURL != "https://eu.hub.molten.bot" {
+		t.Fatalf("expected session eu hub url, got %q", state.Session.HubURL)
+	}
+	if len(fake.bindRequests) != 1 || fake.bindRequests[0].HubURL != "https://eu.hub.molten.bot" {
+		t.Fatalf("expected bind request against eu runtime, got %#v", fake.bindRequests)
 	}
 }
 
@@ -235,6 +348,46 @@ func TestHandleDownstreamFailureSendsDetailedFailureAndQueuesFollowUp(t *testing
 	}
 	if originalRequest["repo"] != "/tmp/repo" {
 		t.Fatalf("unexpected original_request repo: %#v", originalRequest)
+	}
+}
+
+func TestNewServiceUsesPersistedAPIBaseForRuntimeCalls(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	settings := DefaultSettings()
+	settings.DataDir = dir
+	store, err := NewStore(filepath.Join(dir, "state.json"), settings)
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	err = store.Update(func(state *AppState) error {
+		state.Session.AgentToken = "agent-token"
+		state.Session.APIBase = "https://runtime.na.hub.molten.bot"
+		state.Settings.HubURL = "https://na.hub.molten.bot"
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("seed store: %v", err)
+	}
+
+	fake := &fakeHubClient{
+		expectedPullURL:    "https://runtime.na.hub.molten.bot",
+		expectedOfflineURL: "https://runtime.na.hub.molten.bot",
+	}
+	service := NewService(store, fake)
+
+	if err := service.PollOnce(context.Background()); err != nil {
+		t.Fatalf("poll once: %v", err)
+	}
+	if err := service.MarkOffline(context.Background(), "shutdown"); err != nil {
+		t.Fatalf("mark offline: %v", err)
+	}
+	if len(fake.offlineCalls) != 1 {
+		t.Fatalf("expected one offline call, got %d", len(fake.offlineCalls))
+	}
+	if len(fake.baseURLCalls) != 1 || fake.baseURLCalls[0] != "https://runtime.na.hub.molten.bot" {
+		t.Fatalf("expected service to initialize client with persisted api_base, got %#v", fake.baseURLCalls)
 	}
 }
 
