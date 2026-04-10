@@ -287,6 +287,7 @@ func (s *Service) handleSkillRequest(ctx context.Context, message hub.PullRespon
 	if err := payload.FromAny(message.OpenClawMessage.Payload); err != nil {
 		pending := PendingTask{
 			ID:              NewID("task"),
+			ParentRequestID: message.OpenClawMessage.RequestID,
 			CallerAgentUUID: message.FromAgentUUID,
 			CallerAgentURI:  message.FromAgentURI,
 			CallerRequestID: message.OpenClawMessage.RequestID,
@@ -308,6 +309,7 @@ func (s *Service) handleSkillRequest(ctx context.Context, message hub.PullRespon
 	if err != nil {
 		pending := PendingTask{
 			ID:                NewID("task"),
+			ParentRequestID:   message.OpenClawMessage.RequestID,
 			CallerAgentUUID:   message.FromAgentUUID,
 			CallerAgentURI:    message.FromAgentURI,
 			CallerRequestID:   message.OpenClawMessage.RequestID,

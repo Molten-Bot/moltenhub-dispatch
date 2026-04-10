@@ -291,6 +291,12 @@ func TestHandleDispatchResolutionFailureSendsDetailedFailureAndQueuesFollowUp(t 
 	if got := fake.publishCalls[0].Message.ErrorDetail.(map[string]any)["message"]; got != "Task dispatch failed before it reached a connected agent." {
 		t.Fatalf("unexpected caller error detail payload: %#v", fake.publishCalls[0].Message.ErrorDetail)
 	}
+	if got := fake.publishCalls[0].Message.RequestID; got != "parent-req" {
+		t.Fatalf("unexpected caller failure request id: %q", got)
+	}
+	if got := fake.publishCalls[0].Message.ReplyTo; got != "parent-req" {
+		t.Fatalf("unexpected caller failure reply_to_request_id: %q", got)
+	}
 
 	state := service.store.Snapshot()
 	if len(state.FollowUpTasks) != 1 {
