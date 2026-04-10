@@ -164,11 +164,11 @@ func TestHandleIndexHidesSubActionsUntilBoundAndConnected(t *testing.T) {
 	if !strings.Contains(body, `id="sub-actions" hidden`) {
 		t.Fatalf("expected sub-actions container to be hidden, body=%s", body)
 	}
-	if strings.Contains(body, ">3. Connected Agents<") {
-		t.Fatalf("did not expect connected agents section while unavailable, body=%s", body)
+	if !strings.Contains(body, ">3. Connected Agents<") {
+		t.Fatalf("expected connected agents markup to remain available for client-side reveal, body=%s", body)
 	}
-	if strings.Contains(body, ">4. Manual Dispatch<") {
-		t.Fatalf("did not expect manual dispatch section while unavailable, body=%s", body)
+	if !strings.Contains(body, ">4. Manual Dispatch<") {
+		t.Fatalf("expected manual dispatch markup to remain available for client-side reveal, body=%s", body)
 	}
 	if !strings.Contains(body, "until this runtime is bound to Molten Hub and connectivity is working") {
 		t.Fatalf("expected unbound gating reason, body=%s", body)
