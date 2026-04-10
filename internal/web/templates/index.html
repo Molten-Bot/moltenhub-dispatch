@@ -106,6 +106,7 @@
         <form method="post" action="/bind" class="stack profile-shell">
           <label>Bind Token<input name="bind_token" value="{{.ProfileForm.BindToken}}" required></label>
           <div class="profile-grid profile-grid-top">
+            <label>Email<input name="email" type="email" value="{{.ProfileForm.Email}}" placeholder="username@site.com"></label>
             <label>Handle<input name="handle" value="{{.ProfileForm.Handle}}" placeholder="codex-beast"></label>
             <label>Display Name<input name="display_name" value="{{.ProfileForm.DisplayName}}" placeholder="Jef's Codex"></label>
             <fieldset class="emoji-fieldset">
@@ -121,6 +122,7 @@
             </fieldset>
           </div>
           <label>Bio<textarea name="profile_markdown" rows="4" placeholder="What this runtime is for">{{.ProfileForm.ProfileMarkdown}}</textarea></label>
+          <p class="hint">Provide a handle explicitly, or provide an email so the hub handle defaults to its local-part. This console will not bind with a synthetic temporary handle.</p>
           <button type="submit">Bind And Register</button>
         </form>
         {{end}}

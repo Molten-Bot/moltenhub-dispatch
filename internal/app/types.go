@@ -132,6 +132,7 @@ type AppState struct {
 
 type BindProfile struct {
 	BindToken       string
+	Email           string
 	Handle          string
 	DisplayName     string
 	Emoji           string

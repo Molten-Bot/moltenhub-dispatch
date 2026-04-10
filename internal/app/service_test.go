@@ -213,7 +213,7 @@ func TestBindAndRegisterAdvertisesDispatchSkills(t *testing.T) {
 	}
 }
 
-func TestBindAndRegisterWithTemporaryHandleKeepsFinalizationOpen(t *testing.T) {
+func TestBindAndRegisterDerivesHandleFromEmailLocalPart(t *testing.T) {
 	t.Parallel()
 
 	service, fake := newTestService(t)
@@ -221,12 +221,13 @@ func TestBindAndRegisterWithTemporaryHandleKeepsFinalizationOpen(t *testing.T) {
 		AgentToken: "agent-token",
 		AgentUUID:  "agent-uuid",
 		AgentURI:   "molten://dispatch/agent",
-		Handle:     "tmp-agent-123",
+		Handle:     "dispatch.agent",
 		APIBase:    "https://na.hub.molten.bot",
 	}
 
 	err := service.BindAndRegister(context.Background(), BindProfile{
 		BindToken:       "bind-token",
+		Email:           "Dispatch.Agent@site.com",
 		DisplayName:     "Dispatch Agent",
 		ProfileMarkdown: "Dispatches skill requests to connected agents.",
 	})
@@ -234,19 +235,45 @@ func TestBindAndRegisterWithTemporaryHandleKeepsFinalizationOpen(t *testing.T) {
 		t.Fatalf("bind and register: %v", err)
 	}
 
+	if len(fake.bindRequests) != 1 || fake.bindRequests[0].Handle != "dispatch.agent" {
+		t.Fatalf("expected derived bind handle, got %#v", fake.bindRequests)
+	}
 	if len(fake.updateMetadataCalls) != 1 {
 		t.Fatalf("expected metadata update, got %d", len(fake.updateMetadataCalls))
 	}
-	if fake.updateMetadataCalls[0].Handle != "" {
-		t.Fatalf("expected temporary bind to omit handle finalization, got %q", fake.updateMetadataCalls[0].Handle)
+	if fake.updateMetadataCalls[0].Handle != "dispatch.agent" {
+		t.Fatalf("expected finalized derived handle, got %q", fake.updateMetadataCalls[0].Handle)
 	}
 
 	state := service.store.Snapshot()
-	if state.Session.Handle != "tmp-agent-123" {
-		t.Fatalf("expected temporary handle to persist, got %q", state.Session.Handle)
+	if state.Session.Handle != "dispatch.agent" {
+		t.Fatalf("expected derived handle to persist, got %q", state.Session.Handle)
 	}
-	if state.Session.HandleFinalized {
-		t.Fatal("did not expect temporary bind to finalize the handle")
+	if !state.Session.HandleFinalized {
+		t.Fatal("expected derived handle to be finalized during bind")
+	}
+}
+
+func TestBindAndRegisterRejectsBindWithoutHandleOrUsableEmail(t *testing.T) {
+	t.Parallel()
+
+	service, fake := newTestService(t)
+	fake.bindResponse = hub.BindResponse{
+		AgentToken: "agent-token",
+	}
+
+	err := service.BindAndRegister(context.Background(), BindProfile{
+		BindToken: "bind-token",
+		Email:     "dispatch+alerts@site.com",
+	})
+	if err == nil {
+		t.Fatal("expected bind validation error")
+	}
+	if err.Error() != "handle is required unless a usable email local-part is provided" {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(fake.bindRequests) != 0 {
+		t.Fatalf("did not expect bind request when validation fails, got %#v", fake.bindRequests)
 	}
 }
 
@@ -578,6 +605,12 @@ func TestHandleDispatchResolutionFailureSendsDetailedFailureAndQueuesFollowUp(t 
 	if failurePayload["error"] != "no connected agent matched \"missing-agent\"" {
 		t.Fatalf("unexpected caller error: %#v", failurePayload["error"])
 	}
+	if failurePayload["retryable"] != false {
+		t.Fatalf("expected retryable=false, got %#v", failurePayload["retryable"])
+	}
+	if failurePayload["next_action"] != "" {
+		t.Fatalf("expected empty next_action, got %#v", failurePayload["next_action"])
+	}
 	if got := fake.publishCalls[0].Message.ErrorDetail.(map[string]any)["message"]; got != "Task dispatch failed before it reached a connected agent." {
 		t.Fatalf("unexpected caller error detail payload: %#v", fake.publishCalls[0].Message.ErrorDetail)
 	}
@@ -660,7 +693,7 @@ func TestHandleDownstreamFailureSendsDetailedFailureAndQueuesFollowUp(t *testing
 			OK:          boolPtr(false),
 			Error:       "task execution failed",
 			ErrorDetail: map[string]any{"stderr": "panic: boom"},
-			Payload:     map[string]any{"status": "failed"},
+			Payload:     map[string]any{"status": "failed", "retryable": true, "next_action": "inspect_logs"},
 		},
 	}
 
@@ -697,6 +730,12 @@ func TestHandleDownstreamFailureSendsDetailedFailureAndQueuesFollowUp(t *testing
 	}
 	if got := failurePayload["message"]; got != "Task failed while dispatching to a connected agent." {
 		t.Fatalf("unexpected caller failure message: %#v", got)
+	}
+	if got := failurePayload["retryable"]; got != true {
+		t.Fatalf("unexpected caller retryable field: %#v", got)
+	}
+	if got := failurePayload["next_action"]; got != "inspect_logs" {
+		t.Fatalf("unexpected caller next_action field: %#v", got)
 	}
 	if got := failurePayload["error_detail"].(map[string]any)["stderr"]; got != "panic: boom" {
 		t.Fatalf("unexpected caller failure detail: %#v", failurePayload["error_detail"])
@@ -844,6 +883,12 @@ func TestFailureFromErrorPreservesStructuredHubAPIErrorDetails(t *testing.T) {
 	if detail["next_action"] != "retry_with_different_handle" {
 		t.Fatalf("unexpected next action: %#v", detail)
 	}
+	if !report.Retryable {
+		t.Fatal("expected retryable API error to propagate")
+	}
+	if report.NextAction != "retry_with_different_handle" {
+		t.Fatalf("unexpected report next action: %q", report.NextAction)
+	}
 	nested, ok := detail["error_detail"].(map[string]any)
 	if !ok || nested["handle"] != "dispatch-agent" {
 		t.Fatalf("unexpected nested detail: %#v", detail["error_detail"])
@@ -855,7 +900,7 @@ func TestFailureFromMessageUsesDownstreamFailureEnvelope(t *testing.T) {
 
 	report := failureFromMessage(hub.OpenClawMessage{
 		Type:    "skill_result",
-		Payload: map[string]any{"status": "failed", "message": "Task failed in worker", "error": "panic: boom", "error_detail": map[string]any{"stderr": "stacktrace"}},
+		Payload: map[string]any{"status": "failed", "message": "Task failed in worker", "error": "panic: boom", "retryable": true, "next_action": "retry_after_fix", "error_detail": map[string]any{"stderr": "stacktrace"}},
 	})
 
 	if report.Message != "Task failed in worker" {
@@ -863,6 +908,12 @@ func TestFailureFromMessageUsesDownstreamFailureEnvelope(t *testing.T) {
 	}
 	if report.Error != "panic: boom" {
 		t.Fatalf("unexpected failure error: %q", report.Error)
+	}
+	if !report.Retryable {
+		t.Fatal("expected retryable flag from downstream payload")
+	}
+	if report.NextAction != "retry_after_fix" {
+		t.Fatalf("unexpected next action: %q", report.NextAction)
 	}
 	detail, ok := report.Detail.(map[string]any)
 	if !ok || detail["stderr"] != "stacktrace" {

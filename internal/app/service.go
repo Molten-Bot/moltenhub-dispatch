@@ -54,9 +54,11 @@ type Service struct {
 }
 
 type failureReport struct {
-	Message string
-	Error   string
-	Detail  any
+	Message    string
+	Error      string
+	Detail     any
+	Retryable  bool
+	NextAction string
 }
 
 type baseURLSetter interface {
@@ -104,6 +106,11 @@ func (s *Service) BindAndRegister(ctx context.Context, profile BindProfile) erro
 		Emoji:           profile.Emoji,
 		ProfileMarkdown: profile.ProfileMarkdown,
 	})
+	resolvedHandle, err := resolveBindHandle(profile.Email, agentProfile.Handle)
+	if err != nil {
+		return err
+	}
+	agentProfile.Handle = resolvedHandle
 	handleRequestedDuringBind := agentProfile.Handle != ""
 	if setter, ok := s.hub.(baseURLSetter); ok {
 		setter.SetBaseURL(runtime.HubURL)
@@ -600,6 +607,8 @@ func (s *Service) queueFollowUp(ctx context.Context, state AppState, pending Pen
 				"status":       "failed",
 				"message":      report.Message,
 				"error":        report.Error,
+				"retryable":    report.Retryable,
+				"next_action":  report.NextAction,
 				"error_detail": report.Detail,
 			},
 			"original_request": map[string]any{
@@ -666,6 +675,8 @@ func (s *Service) publishFailureToCaller(ctx context.Context, state AppState, pe
 		"status":       "failed",
 		"message":      explicitFailureMessage(report.Message),
 		"error":        report.Error,
+		"retryable":    report.Retryable,
+		"next_action":  report.NextAction,
 		"error_detail": report.Detail,
 		"log_paths":    logPaths,
 	}
@@ -944,6 +955,11 @@ func failureFromError(message string, err error) failureReport {
 		report.Message = "Task failed while dispatching to a connected agent."
 	}
 	report.Detail = errorDetail(err)
+	var apiErr *hub.APIError
+	if errors.As(err, &apiErr) {
+		report.Retryable = apiErr.Retryable
+		report.NextAction = strings.TrimSpace(apiErr.NextAction)
+	}
 	return report
 }
 
@@ -965,6 +981,12 @@ func failureFromMessage(message hub.OpenClawMessage) failureReport {
 	}
 	if report.Error == "" {
 		report.Error = "downstream agent reported failure"
+	}
+	if retryable, ok := payloadMap["retryable"].(bool); ok {
+		report.Retryable = retryable
+	}
+	if nextAction := stringFromMap(payloadMap, "next_action"); nextAction != "" {
+		report.NextAction = nextAction
 	}
 	if report.Detail == nil {
 		report.Detail = message.Payload
@@ -1133,6 +1155,43 @@ func normalizeAgentProfile(profile AgentProfile) AgentProfile {
 	profile.Emoji = strings.TrimSpace(profile.Emoji)
 	profile.ProfileMarkdown = strings.TrimSpace(profile.ProfileMarkdown)
 	return profile
+}
+
+func resolveBindHandle(email, handle string) (string, error) {
+	handle = strings.TrimSpace(handle)
+	if handle != "" {
+		return handle, nil
+	}
+
+	derived, ok := handleFromEmailLocalPart(email)
+	if ok {
+		return derived, nil
+	}
+
+	return "", errors.New("handle is required unless a usable email local-part is provided")
+}
+
+func handleFromEmailLocalPart(email string) (string, bool) {
+	email = strings.TrimSpace(strings.ToLower(email))
+	if email == "" {
+		return "", false
+	}
+
+	localPart, _, found := strings.Cut(email, "@")
+	if !found {
+		return "", false
+	}
+	localPart = strings.TrimSpace(localPart)
+	if localPart == "" {
+		return "", false
+	}
+	for _, ch := range localPart {
+		if (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '.' || ch == '_' || ch == '-' {
+			continue
+		}
+		return "", false
+	}
+	return localPart, true
 }
 
 func buildAgentMetadata(profile AgentProfile, sessionKey string) map[string]any {
