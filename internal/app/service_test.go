@@ -323,6 +323,7 @@ func TestUpdateAgentProfileUpdatesMetadataAndStoredProfile(t *testing.T) {
 	err := service.store.Update(func(state *AppState) error {
 		state.Session.AgentToken = "agent-token"
 		state.Session.Handle = "dispatch-agent"
+		state.Session.HandleFinalized = true
 		return nil
 	})
 	if err != nil {
