@@ -80,7 +80,7 @@ func TestHandleBindRendersSubmittedTokenOnFailure(t *testing.T) {
 		t.Fatalf("new server: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/bind", strings.NewReader("bind_token=bind-123&email=jef%40site.com&handle=codex-beast&display_name=Jef%27s+Codex&emoji=%F0%9F%92%AF&profile_markdown=What+this+runtime+is+for"))
+	req := httptest.NewRequest(http.MethodPost, "/bind", strings.NewReader("bind_token=bind-123&handle=codex-beast&display_name=Jef%27s+Codex&emoji=%F0%9F%92%AF&profile_markdown=What+this+runtime+is+for"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rec := httptest.NewRecorder()
 
@@ -93,9 +93,6 @@ func TestHandleBindRendersSubmittedTokenOnFailure(t *testing.T) {
 	if !strings.Contains(body, `name="bind_token" value="bind-123"`) {
 		t.Fatalf("expected bind token to remain in form, body=%s", body)
 	}
-	if !strings.Contains(body, `name="email" type="email" value="jef@site.com"`) {
-		t.Fatalf("expected email to remain in form, body=%s", body)
-	}
 	if !strings.Contains(body, "bind failed") {
 		t.Fatalf("expected bind error in page, body=%s", body)
 	}
@@ -107,7 +104,7 @@ func TestHandleBindRendersSubmittedTokenOnFailure(t *testing.T) {
 	}
 }
 
-func TestHandleBindPassesSubmittedEmailToService(t *testing.T) {
+func TestHandleBindPassesSubmittedProfileToService(t *testing.T) {
 	t.Parallel()
 
 	stub := &stubService{}
@@ -116,7 +113,7 @@ func TestHandleBindPassesSubmittedEmailToService(t *testing.T) {
 		t.Fatalf("new server: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/bind", strings.NewReader("bind_token=bind-123&email=jef%40site.com&display_name=Jef%27s+Codex"))
+	req := httptest.NewRequest(http.MethodPost, "/bind", strings.NewReader("bind_token=bind-123&handle=codex-beast&display_name=Jef%27s+Codex"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rec := httptest.NewRecorder()
 
@@ -125,8 +122,11 @@ func TestHandleBindPassesSubmittedEmailToService(t *testing.T) {
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf("expected redirect response, got %d", rec.Code)
 	}
-	if stub.lastBindProfile.Email != "jef@site.com" {
-		t.Fatalf("expected submitted email to reach service, got %#v", stub.lastBindProfile)
+	if stub.lastBindProfile.Handle != "codex-beast" {
+		t.Fatalf("expected submitted handle to reach service, got %#v", stub.lastBindProfile)
+	}
+	if stub.lastBindProfile.DisplayName != "Jef's Codex" {
+		t.Fatalf("expected submitted display name to reach service, got %#v", stub.lastBindProfile)
 	}
 }
 
@@ -369,7 +369,7 @@ func TestHandleBindShowsEditProfileAfterSessionBecomesBound(t *testing.T) {
 		t.Fatalf("new server: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/bind", strings.NewReader("bind_token=bind-123&email=jef%40site.com&handle=codex-beast&display_name=Jef%27s+Codex&emoji=%F0%9F%92%AF&profile_markdown=What+this+runtime+is+for"))
+	req := httptest.NewRequest(http.MethodPost, "/bind", strings.NewReader("bind_token=bind-123&handle=codex-beast&display_name=Jef%27s+Codex&emoji=%F0%9F%92%AF&profile_markdown=What+this+runtime+is+for"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rec := httptest.NewRecorder()
 

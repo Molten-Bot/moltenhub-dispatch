@@ -87,10 +87,9 @@
         </form>
         {{else}}
         <h2>2. Bind Agent</h2>
-        <form method="post" action="/bind" class="stack profile-shell">
+        <form method="post" action="/bind" class="stack profile-shell" id="bind-form">
           <label>Bind Token<input name="bind_token" value="{{.ProfileForm.BindToken}}" required></label>
           <div class="profile-grid profile-grid-top">
-            <label>Email<input name="email" type="email" value="{{.ProfileForm.Email}}" placeholder="username@site.com"></label>
             <label>Handle<input name="handle" value="{{.ProfileForm.Handle}}" placeholder="codex-beast"></label>
             <label>Display Name<input name="display_name" value="{{.ProfileForm.DisplayName}}" placeholder="Jef's Codex"></label>
             <fieldset class="emoji-fieldset">
@@ -378,7 +377,6 @@
               },
               body: JSON.stringify({
                 bind_token: String(formData.get("bind_token") || "").trim(),
-                email: String(formData.get("email") || "").trim(),
                 handle: String(formData.get("handle") || "").trim(),
                 display_name: String(formData.get("display_name") || "").trim(),
                 emoji: String(formData.get("emoji") || "").trim(),

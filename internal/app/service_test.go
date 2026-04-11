@@ -223,7 +223,7 @@ func TestBindAndRegisterAdvertisesDispatchSkills(t *testing.T) {
 	}
 }
 
-func TestBindAndRegisterDerivesHandleFromEmailLocalPart(t *testing.T) {
+func TestBindAndRegisterUsesSubmittedHandle(t *testing.T) {
 	t.Parallel()
 
 	service, fake := newTestService(t)
@@ -231,13 +231,13 @@ func TestBindAndRegisterDerivesHandleFromEmailLocalPart(t *testing.T) {
 		AgentToken: "agent-token",
 		AgentUUID:  "agent-uuid",
 		AgentURI:   "molten://dispatch/agent",
-		Handle:     "dispatch.agent",
+		Handle:     "dispatch-agent",
 		APIBase:    "https://na.hub.molten.bot",
 	}
 
 	err := service.BindAndRegister(context.Background(), BindProfile{
 		BindToken:       "bind-token",
-		Email:           "Dispatch.Agent@site.com",
+		Handle:          "dispatch-agent",
 		DisplayName:     "Dispatch Agent",
 		ProfileMarkdown: "Dispatches skill requests to connected agents.",
 	})
@@ -245,26 +245,26 @@ func TestBindAndRegisterDerivesHandleFromEmailLocalPart(t *testing.T) {
 		t.Fatalf("bind and register: %v", err)
 	}
 
-	if len(fake.bindRequests) != 1 || fake.bindRequests[0].Handle != "dispatch.agent" {
-		t.Fatalf("expected derived bind handle, got %#v", fake.bindRequests)
+	if len(fake.bindRequests) != 1 || fake.bindRequests[0].Handle != "dispatch-agent" {
+		t.Fatalf("expected submitted bind handle, got %#v", fake.bindRequests)
 	}
 	if len(fake.updateMetadataCalls) != 1 {
 		t.Fatalf("expected metadata update, got %d", len(fake.updateMetadataCalls))
 	}
-	if fake.updateMetadataCalls[0].Handle != "dispatch.agent" {
-		t.Fatalf("expected finalized derived handle, got %q", fake.updateMetadataCalls[0].Handle)
+	if fake.updateMetadataCalls[0].Handle != "dispatch-agent" {
+		t.Fatalf("expected finalized handle, got %q", fake.updateMetadataCalls[0].Handle)
 	}
 
 	state := service.store.Snapshot()
-	if state.Session.Handle != "dispatch.agent" {
-		t.Fatalf("expected derived handle to persist, got %q", state.Session.Handle)
+	if state.Session.Handle != "dispatch-agent" {
+		t.Fatalf("expected handle to persist, got %q", state.Session.Handle)
 	}
 	if !state.Session.HandleFinalized {
-		t.Fatal("expected derived handle to be finalized during bind")
+		t.Fatal("expected submitted handle to be finalized during bind")
 	}
 }
 
-func TestBindAndRegisterRejectsBindWithoutHandleOrUsableEmail(t *testing.T) {
+func TestBindAndRegisterRejectsBindWithoutHandle(t *testing.T) {
 	t.Parallel()
 
 	service, fake := newTestService(t)
@@ -274,12 +274,11 @@ func TestBindAndRegisterRejectsBindWithoutHandleOrUsableEmail(t *testing.T) {
 
 	err := service.BindAndRegister(context.Background(), BindProfile{
 		BindToken: "bind-token",
-		Email:     "dispatch+alerts@site.com",
 	})
 	if err == nil {
 		t.Fatal("expected bind validation error")
 	}
-	if err.Error() != "handle is required unless a usable email local-part is provided" {
+	if err.Error() != "handle is required" {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(fake.bindRequests) != 0 {

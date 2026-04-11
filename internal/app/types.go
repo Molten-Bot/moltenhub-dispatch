@@ -12,13 +12,13 @@ const (
 )
 
 type Settings struct {
-	ListenAddr       string        `json:"listen_addr"`
-	HubRegion        string        `json:"hub_region"`
-	HubURL           string        `json:"hub_url"`
-	SessionKey       string        `json:"session_key"`
-	PollInterval     time.Duration `json:"poll_interval"`
-	TaskTimeout      time.Duration `json:"task_timeout"`
-	DataDir          string        `json:"data_dir"`
+	ListenAddr   string        `json:"listen_addr"`
+	HubRegion    string        `json:"hub_region"`
+	HubURL       string        `json:"hub_url"`
+	SessionKey   string        `json:"session_key"`
+	PollInterval time.Duration `json:"poll_interval"`
+	TaskTimeout  time.Duration `json:"task_timeout"`
+	DataDir      string        `json:"data_dir"`
 }
 
 type ConnectionState struct {
@@ -36,7 +36,7 @@ type Session struct {
 	AgentUUID       string    `json:"agent_uuid"`
 	AgentURI        string    `json:"agent_uri"`
 	Handle          string    `json:"handle"`
-	HandleFinalized bool    `json:"handle_finalized"`
+	HandleFinalized bool      `json:"handle_finalized"`
 	DisplayName     string    `json:"display_name"`
 	Emoji           string    `json:"emoji"`
 	ProfileBio      string    `json:"profile_bio"`
@@ -132,7 +132,6 @@ type AppState struct {
 
 type BindProfile struct {
 	BindToken       string
-	Email           string
 	Handle          string
 	DisplayName     string
 	Emoji           string
