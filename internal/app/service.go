@@ -677,6 +677,11 @@ func (s *Service) publishFailureToCaller(ctx context.Context, state AppState, pe
 		return err
 	}
 
+	detail := report.Detail
+	if failureDetailIsEmpty(detail) {
+		detail = report.Error
+	}
+
 	failurePayload := map[string]any{
 		"ok":            false,
 		"failure":       true,
