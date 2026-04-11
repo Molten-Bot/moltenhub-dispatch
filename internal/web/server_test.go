@@ -124,6 +124,77 @@ func TestHandleBindPassesSubmittedEmailToService(t *testing.T) {
 	}
 }
 
+func TestHandleOnboardingAPIReturnsStageAwareFailure(t *testing.T) {
+	t.Parallel()
+
+	server, err := New(&stubService{bindErr: app.WrapOnboardingError(app.OnboardingStepProfileSet, errors.New("profile sync failed"))})
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/onboarding", strings.NewReader(`{"bind_token":"bind-123","handle":"dispatch-agent"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 response, got %d", rec.Code)
+	}
+
+	var body struct {
+		OK         bool   `json:"ok"`
+		Error      string `json:"error"`
+		Onboarding struct {
+			Stage string `json:"stage"`
+		} `json:"onboarding"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.OK {
+		t.Fatalf("expected failure response, got %#v", body)
+	}
+	if body.Error != "profile sync failed" {
+		t.Fatalf("unexpected error message: %#v", body)
+	}
+	if body.Onboarding.Stage != app.OnboardingStepProfileSet {
+		t.Fatalf("unexpected onboarding stage: %#v", body)
+	}
+}
+
+func TestHandleOnboardingAPIReturnsSuccess(t *testing.T) {
+	t.Parallel()
+
+	server, err := New(&stubService{state: app.AppState{Settings: app.DefaultSettings()}})
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/onboarding", strings.NewReader(`{"bind_token":"bind-123","handle":"dispatch-agent"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 response, got %d", rec.Code)
+	}
+
+	var body struct {
+		OK      bool   `json:"ok"`
+		Message string `json:"message"`
+		Bound   bool   `json:"bound"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !body.OK || !body.Bound {
+		t.Fatalf("expected bound success response, got %#v", body)
+	}
+	if body.Message != "Agent bound and profile registered." {
+		t.Fatalf("unexpected message: %#v", body)
+	}
+}
+
 func TestHandleIndexShowsBoundProfileState(t *testing.T) {
 	t.Parallel()
 
@@ -370,7 +441,7 @@ func TestRenderIndexReturnsSingleInternalServerErrorOnTemplateFailure(t *testing
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := &headerTrackingResponseWriter{header: make(http.Header)}
 
-	server.renderIndex(rec, req, "", false, agentProfileForm{})
+	server.renderIndex(rec, req, "", false, agentProfileForm{}, nil)
 
 	if rec.status != http.StatusInternalServerError {
 		t.Fatalf("expected 500 response, got %d", rec.status)
