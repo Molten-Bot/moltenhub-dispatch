@@ -1439,8 +1439,8 @@ func runtimeEndpointsFromBind(result hub.BindResponse) hub.RuntimeEndpoints {
 }
 
 func connectedAgentsFromCapabilities(capabilities map[string]any, state AppState) []ConnectedAgent {
-	rawCatalog, ok := capabilities["peer_skill_catalog"]
-	if !ok || rawCatalog == nil {
+	rawCatalog := connectedAgentCatalog(capabilities)
+	if rawCatalog == nil {
 		return nil
 	}
 
@@ -1474,6 +1474,15 @@ func connectedAgentsFromCapabilities(capabilities map[string]any, state AppState
 		agents = append(agents, agent)
 	}
 	return agents
+}
+
+func connectedAgentCatalog(capabilities map[string]any) any {
+	for _, key := range []string{"peer_skill_catalog", "connected_agents", "bound_agents", "agents", "peers", "results", "items"} {
+		if raw := capabilities[key]; raw != nil {
+			return raw
+		}
+	}
+	return nil
 }
 
 func flattenPeerSkillCatalog(raw any) []map[string]any {
