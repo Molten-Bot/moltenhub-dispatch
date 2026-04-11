@@ -180,10 +180,6 @@ func (c *Client) BindAgent(ctx context.Context, req BindRequest) (BindResponse, 
 	if errors.As(bindErr, &apiErr) && apiErr.StatusCode == http.StatusConflict {
 		return BindResponse{}, bindErr
 	}
-
-	if !isRouteNotFound(bindErr) {
-		return BindResponse{}, fmt.Errorf("/v1/agents/bind: %w", bindErr)
-	}
 	return BindResponse{}, fmt.Errorf("/v1/agents/bind: %w", bindErr)
 }
 
