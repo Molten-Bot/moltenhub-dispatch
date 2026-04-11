@@ -304,9 +304,6 @@
       const onboardingSteps = document.getElementById("onboarding-steps");
       const onboardingMessage = document.getElementById("onboarding-message");
       const flash = document.querySelector(".flash[data-auto-dismiss-seconds]");
-      if (!shell || !indicator || !label || !description || !subActions || !subActionsNotice) {
-        return;
-      }
 
       if (flash) {
         const configuredSeconds = Number.parseFloat(flash.dataset.autoDismissSeconds || "");
@@ -417,6 +414,9 @@
         let pickerRoot = null;
         let pickerMounted = false;
         let pickerLoading = false;
+        if (panel.parentElement !== document.body) {
+          document.body.appendChild(panel);
+        }
 
         const renderPickerMessage = (message) => {
           pickerMount.innerHTML = "";
@@ -618,7 +618,7 @@
         }
       });
 
-      const bound = shell.dataset.bound === "true";
+      const bound = shell?.dataset.bound === "true";
       const onboardingDefaults = (mode = (bound ? "existing" : "new")) => {
         const isNew = String(mode || "").trim() === "new";
         return [
@@ -787,6 +787,9 @@
       }
 
       const syncSubActions = (state) => {
+        if (!subActions || !subActionsNotice) {
+          return;
+        }
         const connected = bound && state.status === "connected";
         subActions.hidden = !connected;
         subActionsNotice.hidden = connected;
@@ -794,11 +797,17 @@
           const reason = bound
             ? "Sub-actions stay hidden while the Hub connection is offline or unavailable."
             : "Sub-actions stay hidden until this runtime is bound to Molten Hub and connectivity is working.";
-          subActionsNotice.querySelector(".empty").textContent = reason;
+          const empty = subActionsNotice.querySelector(".empty");
+          if (empty instanceof HTMLElement) {
+            empty.textContent = reason;
+          }
         }
       };
 
       const applyState = (state) => {
+        if (!indicator || !label || !description) {
+          return;
+        }
         const status = state.status || "disconnected";
         const transport = state.transport || "offline";
         indicator.dataset.status = status;
@@ -827,8 +836,10 @@
         }
       };
 
-      refreshState();
-      window.setInterval(refreshState, 3000);
+      if (shell && indicator && label && description && subActions && subActionsNotice) {
+        refreshState();
+        window.setInterval(refreshState, 3000);
+      }
     })();
   </script>
 </body>
