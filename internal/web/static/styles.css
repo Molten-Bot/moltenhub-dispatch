@@ -190,6 +190,64 @@ p {
   color: var(--ink);
 }
 
+.onboarding-flow {
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  border: 1px solid rgba(28, 27, 24, 0.1);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.onboarding-steps {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.onboarding-step {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid rgba(28, 27, 24, 0.12);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.8);
+}
+
+.onboarding-step-label {
+  color: var(--ink);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.onboarding-step-detail {
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.onboarding-step-current {
+  border-color: rgba(191, 90, 54, 0.34);
+  background: linear-gradient(135deg, rgba(242, 195, 165, 0.46), rgba(255, 252, 247, 0.94));
+}
+
+.onboarding-step-completed {
+  border-color: rgba(34, 167, 101, 0.32);
+  background: linear-gradient(135deg, rgba(197, 237, 215, 0.68), rgba(255, 252, 247, 0.94));
+}
+
+.onboarding-step-error {
+  border-color: rgba(142, 47, 47, 0.36);
+  background: linear-gradient(135deg, rgba(248, 214, 208, 0.88), rgba(255, 252, 247, 0.94));
+}
+
+.onboarding-message {
+  margin: 10px 0 0;
+  min-height: 1.2em;
+}
+
 .status-list {
   margin: 0;
 }
