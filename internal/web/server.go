@@ -465,8 +465,10 @@ type connectionView struct {
 }
 
 type subActionView struct {
-	Visible bool
-	Reason  string
+	Visible                 bool
+	Reason                  string
+	RequiresAgentConnection bool
+	AgentConnectURL         string
 }
 
 type onboardingView struct {
@@ -628,6 +630,14 @@ func subActionState(state app.AppState) subActionView {
 		return subActionView{
 			Visible: false,
 			Reason:  "Sub-actions stay hidden while the Hub connection is offline or unavailable.",
+		}
+	}
+	if len(state.ConnectedAgents) == 0 {
+		return subActionView{
+			Visible:                 false,
+			Reason:                  "No connected agents are available yet. Connect agents in Molten Bot Hub to enable Manual Dispatch.",
+			RequiresAgentConnection: true,
+			AgentConnectURL:         "https://app.molten.bot/hub",
 		}
 	}
 	return subActionView{Visible: true}

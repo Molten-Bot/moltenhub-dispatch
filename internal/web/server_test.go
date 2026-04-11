@@ -407,6 +407,14 @@ func TestHandleIndexShowsBoundProfileState(t *testing.T) {
 				Emoji:           "💯",
 				ProfileBio:      "What this runtime is for",
 			},
+			ConnectedAgents: []app.ConnectedAgent{
+				{
+					ID:        "worker-a",
+					Name:      "Worker A",
+					AgentUUID: "worker-uuid",
+					AgentURI:  "molten://agent/worker-a",
+				},
+			},
 		},
 	})
 	if err != nil {
@@ -478,6 +486,44 @@ func TestHandleIndexShowsBoundProfileState(t *testing.T) {
 	}
 	if !strings.Contains(body, `id="sub-actions-notice" class="panel" hidden`) {
 		t.Fatalf("expected sub-action notice to be hidden when bound and connected, body=%s", body)
+	}
+}
+
+func TestHandleIndexShowsConnectAgentsPanelWhenNoConnectedAgents(t *testing.T) {
+	t.Parallel()
+
+	server, err := New(&stubService{
+		state: app.AppState{
+			Settings: app.DefaultSettings(),
+			Connection: app.ConnectionState{
+				Status:    app.ConnectionStatusConnected,
+				Transport: app.ConnectionTransportHTTP,
+			},
+			Session: app.Session{
+				AgentToken: "agent-token",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 response, got %d", rec.Code)
+	}
+	if !strings.Contains(body, `id="sub-actions" hidden`) {
+		t.Fatalf("expected manual dispatch container to stay hidden without connected agents, body=%s", body)
+	}
+	if !strings.Contains(body, "Connect agents in Molten Bot Hub") {
+		t.Fatalf("expected connect-agents panel copy, body=%s", body)
+	}
+	if !strings.Contains(body, `class="sub-actions-hub-link" href="https://app.molten.bot/hub"`) {
+		t.Fatalf("expected connect-agents panel link to Molten Bot Hub dashboard, body=%s", body)
 	}
 }
 

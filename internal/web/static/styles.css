@@ -4064,6 +4064,21 @@ pre {
   color: var(--muted);
 }
 
+.sub-actions-hub-link-row {
+  margin: 10px 0 0;
+}
+
+.sub-actions-hub-link {
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.sub-actions-hub-link:hover,
+.sub-actions-hub-link:focus-visible {
+  text-decoration: underline;
+}
+
 #sub-actions-notice[hidden],
 #sub-actions[hidden] {
   display: none !important;
