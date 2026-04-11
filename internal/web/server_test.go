@@ -421,11 +421,20 @@ func TestHandleIndexRendersInteractiveEmojiPicker(t *testing.T) {
 	if !strings.Contains(body, `data-hub-emoji-panel`) {
 		t.Fatalf("expected interactive emoji picker panel, body=%s", body)
 	}
+	if !strings.Contains(body, `data-hub-emoji-mart-root`) {
+		t.Fatalf("expected emoji mart mount root, body=%s", body)
+	}
 	if strings.Contains(body, `type="radio" name="emoji"`) {
 		t.Fatalf("did not expect legacy radio emoji options, body=%s", body)
 	}
 	if !strings.Contains(body, `const initHubEmojiPicker = (root) => {`) {
 		t.Fatalf("expected emoji picker client module to be embedded, body=%s", body)
+	}
+	if !strings.Contains(body, `https://esm.sh/@emoji-mart/react@1.1.1?bundle`) {
+		t.Fatalf("expected @emoji-mart/react module usage, body=%s", body)
+	}
+	if !strings.Contains(body, `https://esm.sh/@emoji-mart/data@1.2.1`) {
+		t.Fatalf("expected @emoji-mart/data module usage, body=%s", body)
 	}
 }
 
