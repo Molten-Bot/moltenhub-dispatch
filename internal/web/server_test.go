@@ -430,6 +430,9 @@ func TestHandleIndexRendersInteractiveEmojiPicker(t *testing.T) {
 	if !strings.Contains(body, `const initHubEmojiPicker = (root) => {`) {
 		t.Fatalf("expected emoji picker client module to be embedded, body=%s", body)
 	}
+	if !strings.Contains(body, `document.body.appendChild(panel);`) {
+		t.Fatalf("expected emoji picker panel to portal to document body, body=%s", body)
+	}
 	if !strings.Contains(body, `https://esm.sh/@emoji-mart/react@1.1.1?bundle`) {
 		t.Fatalf("expected @emoji-mart/react module usage, body=%s", body)
 	}
