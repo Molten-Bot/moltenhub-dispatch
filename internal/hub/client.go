@@ -180,21 +180,7 @@ func (c *Client) BindAgent(ctx context.Context, req BindRequest) (BindResponse, 
 	if errors.As(bindErr, &apiErr) && apiErr.StatusCode == http.StatusConflict {
 		return BindResponse{}, bindErr
 	}
-
-	if !isRouteNotFound(bindErr) {
-		return BindResponse{}, fmt.Errorf("/v1/agents/bind: %w", bindErr)
-	}
-
-	out, bindTokensErr := c.bindAgent(ctx, "/v1/agents/bind-tokens", requestBody)
-	if bindTokensErr == nil {
-		return out, nil
-	}
-
-	if errors.As(bindTokensErr, &apiErr) && apiErr.StatusCode == http.StatusConflict {
-		return BindResponse{}, bindTokensErr
-	}
-
-	return BindResponse{}, fmt.Errorf("bind flow failed: /v1/agents/bind: %v; /v1/agents/bind-tokens: %v", bindErr, bindTokensErr)
+	return BindResponse{}, fmt.Errorf("/v1/agents/bind: %w", bindErr)
 }
 
 func (c *Client) bindAgent(ctx context.Context, endpoint string, requestBody any) (BindResponse, error) {

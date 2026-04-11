@@ -217,7 +217,7 @@ func TestBindAgentDoesNotFallbackToBindTokensRouteOnInvalidBindPayload(t *testin
 	}
 }
 
-func TestBindAgentFallsBackToBindTokensRoute(t *testing.T) {
+func TestBindAgentDoesNotFallbackToBindTokensRouteWhenBindRouteIsMissing(t *testing.T) {
 	t.Parallel()
 
 	var bindRouteCalls int
@@ -234,34 +234,10 @@ func TestBindAgentFallsBackToBindTokensRoute(t *testing.T) {
 			})
 		case "/v1/agents/bind-tokens":
 			bindTokensRouteCalls++
-			var body map[string]any
-			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-				t.Fatalf("decode request: %v", err)
-			}
-			if body["bind_token"] != "bind-token" {
-				t.Fatalf("unexpected bind token payload: %#v", body)
-			}
-			if body["handle"] != "dispatch" {
-				t.Fatalf("unexpected bind handle payload: %#v", body)
-			}
-			for _, forbidden := range []string{"hub_url", "hubUrl", "agent_id", "bindToken", "token"} {
-				if _, exists := body[forbidden]; exists {
-					t.Fatalf("unexpected legacy key %q in payload: %#v", forbidden, body)
-				}
-			}
-			if len(body) != 2 {
-				t.Fatalf("expected canonical bind payload with 2 fields, got %#v", body)
-			}
-			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"ok": true,
-				"result": map[string]any{
-					"agent_token": "agent-token",
-					"agent_uuid":  "agent-uuid",
-					"agent_uri":   "molten://agent/dispatch",
-					"handle":      "dispatch",
-					"api_base":    server.URL,
-				},
+				"error":   "unauthorized",
+				"message": "missing or invalid human auth",
 			})
 		default:
 			t.Fatalf("unexpected path: %s", r.URL.Path)
@@ -270,18 +246,21 @@ func TestBindAgentFallsBackToBindTokensRoute(t *testing.T) {
 	defer server.Close()
 
 	client := hub.NewClient(server.URL)
-	response, err := client.BindAgent(context.Background(), hub.BindRequest{
+	_, err := client.BindAgent(context.Background(), hub.BindRequest{
 		BindToken: "bind-token",
 		Handle:    "dispatch",
 	})
-	if err != nil {
-		t.Fatalf("bind agent: %v", err)
+	if err == nil {
+		t.Fatal("expected bind error")
 	}
-	if response.AgentToken != "agent-token" {
-		t.Fatalf("unexpected token: %s", response.AgentToken)
+	if bindRouteCalls != 1 {
+		t.Fatalf("expected one /bind attempt, got %d", bindRouteCalls)
 	}
-	if bindRouteCalls != 1 || bindTokensRouteCalls != 1 {
-		t.Fatalf("expected single fallback from /bind to /bind-tokens, calls bind=%d bind-tokens=%d", bindRouteCalls, bindTokensRouteCalls)
+	if bindTokensRouteCalls != 0 {
+		t.Fatalf("expected no /bind-tokens fallback when /bind is missing, got %d", bindTokensRouteCalls)
+	}
+	if !strings.Contains(err.Error(), "/v1/agents/bind: hub API 404 not_found: route not found") {
+		t.Fatalf("expected canonical bind-route error details, got %v", err)
 	}
 }
 
