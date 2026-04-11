@@ -106,7 +106,7 @@
             </fieldset>
           </div>
           <label>Bio<textarea name="profile_markdown" rows="4" placeholder="What this runtime is for">{{.ProfileForm.ProfileMarkdown}}</textarea></label>
-          <button type="submit" id="bind-submit">Bind And Register</button>
+          <button type="submit" id="bind-submit">Bind</button>
         </form>
         {{end}}
       </article>
@@ -317,7 +317,7 @@
           }
         });
         if (bindSubmit) {
-          bindSubmit.textContent = busy ? "Binding..." : "Bind And Register";
+          bindSubmit.textContent = busy ? "Binding..." : "Bind";
         }
       };
 
