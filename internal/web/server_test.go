@@ -1078,6 +1078,104 @@ func TestHandleStatusReturnsRetryingConnectionView(t *testing.T) {
 	}
 }
 
+func TestHandleConnectedAgentsReturnsSnapshot(t *testing.T) {
+	t.Parallel()
+
+	server, err := New(&stubService{
+		state: app.AppState{
+			ConnectedAgents: []app.ConnectedAgent{
+				{
+					ID:        "dispatcher",
+					Name:      "Dispatcher",
+					AgentUUID: "agent-1",
+					AgentURI:  "molten://agent/dispatcher",
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/connected-agents", nil)
+	rec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 response, got %d", rec.Code)
+	}
+
+	var body struct {
+		OK              bool                 `json:"ok"`
+		ConnectedAgents []app.ConnectedAgent `json:"connected_agents"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !body.OK {
+		t.Fatalf("expected ok=true response, got %#v", body)
+	}
+	if len(body.ConnectedAgents) != 1 {
+		t.Fatalf("expected one connected agent, got %#v", body.ConnectedAgents)
+	}
+	if body.ConnectedAgents[0].Name != "Dispatcher" {
+		t.Fatalf("unexpected connected agent payload: %#v", body.ConnectedAgents[0])
+	}
+}
+
+func TestHandleIndexRendersConnectedAgentsRefreshPanel(t *testing.T) {
+	t.Parallel()
+
+	server, err := New(&stubService{
+		state: app.AppState{
+			Settings: app.DefaultSettings(),
+			Session: app.Session{
+				AgentToken: "agent-token",
+			},
+			Connection: app.ConnectionState{
+				Status:    app.ConnectionStatusConnected,
+				Transport: app.ConnectionTransportHTTP,
+			},
+			ConnectedAgents: []app.ConnectedAgent{
+				{
+					ID:   "dispatcher",
+					Name: "Dispatcher",
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, ">Connected Agents<") {
+		t.Fatalf("expected connected agents panel heading, body=%s", body)
+	}
+	if strings.Contains(body, "Connected Agent Directory") {
+		t.Fatalf("did not expect deprecated connected agent directory heading, body=%s", body)
+	}
+	if !strings.Contains(body, `id="connected-agents-refresh"`) {
+		t.Fatalf("expected connected agents refresh control, body=%s", body)
+	}
+	if !strings.Contains(body, `id="connected-agents-list"`) {
+		t.Fatalf("expected connected agents list container, body=%s", body)
+	}
+	if !strings.Contains(body, `class="connected-agent-card"`) {
+		t.Fatalf("expected connected agent card layout, body=%s", body)
+	}
+	if !strings.Contains(body, "@dispatcher") {
+		t.Fatalf("expected handle fallback on connected agent cards, body=%s", body)
+	}
+	if strings.Contains(body, "PERSONAL · YOU") {
+		t.Fatalf("did not expect invalid personal-context badge in connected agent card, body=%s", body)
+	}
+}
+
 func TestHandleIndexRejectsPostMethod(t *testing.T) {
 	t.Parallel()
 
@@ -1108,6 +1206,27 @@ func TestHandleStatusRejectsPostMethod(t *testing.T) {
 	}
 
 	req := httptest.NewRequest(http.MethodPost, "/status", nil)
+	rec := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected 405 response, got %d", rec.Code)
+	}
+	if got := rec.Header().Get("Allow"); got != http.MethodGet+", "+http.MethodHead {
+		t.Fatalf("unexpected Allow header: %q", got)
+	}
+}
+
+func TestHandleConnectedAgentsRejectsPostMethod(t *testing.T) {
+	t.Parallel()
+
+	server, err := New(&stubService{state: app.AppState{Settings: app.DefaultSettings()}})
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/connected-agents", nil)
 	rec := httptest.NewRecorder()
 
 	server.Handler().ServeHTTP(rec, req)

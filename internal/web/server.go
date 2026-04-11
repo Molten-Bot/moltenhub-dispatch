@@ -72,6 +72,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/", s.handleIndex)
 	s.mux.HandleFunc("/status", s.handleStatus)
 	s.mux.HandleFunc("/api/onboarding", s.handleOnboarding)
+	s.mux.HandleFunc("/api/connected-agents", s.handleConnectedAgents)
 	s.mux.HandleFunc("/bind", s.handleBind)
 	s.mux.HandleFunc("/profile", s.handleProfile)
 	s.mux.HandleFunc("/agents", s.handleAgents)
@@ -259,6 +260,19 @@ func (s *Server) handleOnboarding(w http.ResponseWriter, r *http.Request) {
 		"message":    "Agent bound and profile registered.",
 		"onboarding": onboarding,
 		"bound":      true,
+	})
+}
+
+func (s *Server) handleConnectedAgents(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		w.Header().Set("Allow", http.MethodGet+", "+http.MethodHead)
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	state := s.service.Snapshot()
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok":               true,
+		"connected_agents": state.ConnectedAgents,
 	})
 }
 
