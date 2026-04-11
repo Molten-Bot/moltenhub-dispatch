@@ -98,5 +98,6 @@ go build ./...
 ## Notes
 
 - The app stores runtime state in `data/config.json` (migrating legacy `data/state.json` automatically on startup).
+- Session credentials and routing are persisted with canonical keys (`api_base`, `agent_token`) plus compatibility aliases (`base_url`, `bind_token`).
 - Downstream trust relationships still need to exist in Molten Hub; this app does not create trust edges itself.
 - The dispatcher uses the OpenClaw HTTP adapter because the hub spec explicitly defines skill-request and skill-result envelopes there.
