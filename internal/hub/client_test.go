@@ -70,6 +70,113 @@ func TestBindAgentParsesRuntimeEnvelope(t *testing.T) {
 	}
 }
 
+func TestBindAgentFallsBackToBindTokenKeyVariants(t *testing.T) {
+	t.Parallel()
+
+	var attempts int
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if r.URL.Path != "/v1/agents/bind" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		if body["bindToken"] == "bind-token" {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"ok": true,
+				"result": map[string]any{
+					"agent_token": "agent-token",
+					"agent_uuid":  "agent-uuid",
+					"agent_uri":   "molten://agent/dispatch",
+					"handle":      "dispatch",
+					"api_base":    server.URL,
+				},
+			})
+			return
+		}
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"error":   "invalid_request",
+			"message": "bindToken is required",
+		})
+	}))
+	defer server.Close()
+
+	client := hub.NewClient(server.URL)
+	response, err := client.BindAgent(context.Background(), hub.BindRequest{
+		BindToken: "bind-token",
+	})
+	if err != nil {
+		t.Fatalf("bind agent: %v", err)
+	}
+	if response.AgentToken != "agent-token" {
+		t.Fatalf("unexpected token: %s", response.AgentToken)
+	}
+	if attempts < 2 {
+		t.Fatalf("expected fallback attempts for bind token key variants, got %d", attempts)
+	}
+}
+
+func TestBindAgentFallsBackToBindTokensRoute(t *testing.T) {
+	t.Parallel()
+
+	var bindRouteCalls int
+	var bindTokensRouteCalls int
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/agents/bind":
+			bindRouteCalls++
+			w.WriteHeader(http.StatusNotFound)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"error":   "not_found",
+				"message": "route not found",
+			})
+		case "/v1/agents/bind-tokens":
+			bindTokensRouteCalls++
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode request: %v", err)
+			}
+			if body["bind_token"] != "bind-token" {
+				t.Fatalf("unexpected bind token payload: %#v", body)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"ok": true,
+				"result": map[string]any{
+					"agent_token": "agent-token",
+					"agent_uuid":  "agent-uuid",
+					"agent_uri":   "molten://agent/dispatch",
+					"handle":      "dispatch",
+					"api_base":    server.URL,
+				},
+			})
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client := hub.NewClient(server.URL)
+	response, err := client.BindAgent(context.Background(), hub.BindRequest{
+		BindToken: "bind-token",
+	})
+	if err != nil {
+		t.Fatalf("bind agent: %v", err)
+	}
+	if response.AgentToken != "agent-token" {
+		t.Fatalf("unexpected token: %s", response.AgentToken)
+	}
+	if bindRouteCalls == 0 || bindTokensRouteCalls == 0 {
+		t.Fatalf("expected fallback from /bind to /bind-tokens, calls bind=%d bind-tokens=%d", bindRouteCalls, bindTokensRouteCalls)
+	}
+}
+
 func TestBindAgentReturnsCanonicalError(t *testing.T) {
 	t.Parallel()
 

@@ -69,11 +69,11 @@ type BindResponse struct {
 }
 
 type RuntimeEndpoints struct {
-	ManifestURL       string
-	CapabilitiesURL   string
-	MetadataURL       string
-	OpenClawPullURL   string
-	OpenClawPushURL   string
+	ManifestURL        string
+	CapabilitiesURL    string
+	MetadataURL        string
+	OpenClawPullURL    string
+	OpenClawPushURL    string
 	OpenClawOfflineURL string
 }
 
@@ -133,6 +133,11 @@ type OfflineRequest struct {
 	Reason     string `json:"reason,omitempty"`
 }
 
+type bindAttempt struct {
+	Endpoint string
+	Body     map[string]any
+}
+
 func NewClient(baseURL string) *Client {
 	return &Client{
 		baseURL: strings.TrimRight(baseURL, "/"),
@@ -158,9 +163,32 @@ func (c *Client) SetHTTPClient(client *http.Client) {
 }
 
 func (c *Client) BindAgent(ctx context.Context, req BindRequest) (BindResponse, error) {
-	var out BindResponse
-	err := c.doJSON(ctx, http.MethodPost, "/v1/agents/bind", "", req, &out)
-	return out, err
+	bindToken := strings.TrimSpace(req.BindToken)
+	if bindToken == "" {
+		return BindResponse{}, errors.New("bind token is required")
+	}
+
+	attempts := bindAttempts(req, bindToken)
+	errorsSeen := make([]string, 0, len(attempts))
+	var lastErr error
+	for _, attempt := range attempts {
+		var out BindResponse
+		err := c.doJSON(ctx, http.MethodPost, attempt.Endpoint, "", attempt.Body, &out)
+		if err == nil {
+			return out, nil
+		}
+		lastErr = err
+
+		var apiErr *APIError
+		if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusConflict {
+			return BindResponse{}, err
+		}
+		errorsSeen = append(errorsSeen, fmt.Sprintf("%s: %v", attempt.Endpoint, err))
+	}
+	if len(errorsSeen) == 0 {
+		return BindResponse{}, lastErr
+	}
+	return BindResponse{}, fmt.Errorf("bind flow failed: %s", strings.Join(errorsSeen, "; "))
 }
 
 func (c *Client) UpdateMetadata(ctx context.Context, token string, req UpdateMetadataRequest) (map[string]any, error) {
@@ -251,6 +279,44 @@ func (c *Client) runtimeEndpoint(override, fallback string) string {
 		return override
 	}
 	return fallback
+}
+
+func bindAttempts(req BindRequest, bindToken string) []bindAttempt {
+	base := map[string]any{}
+	if hubURL := strings.TrimSpace(req.HubURL); hubURL != "" {
+		base["hub_url"] = hubURL
+		base["hubUrl"] = hubURL
+	}
+	if handle := strings.TrimSpace(req.Handle); handle != "" {
+		base["handle"] = handle
+		base["agent_id"] = handle
+	}
+
+	endpoints := []string{"/v1/agents/bind", "/v1/agents/bind-tokens"}
+	tokenKeys := []string{"bind_token", "bindToken", "token"}
+	attempts := make([]bindAttempt, 0, len(endpoints)*len(tokenKeys))
+	for _, endpoint := range endpoints {
+		for _, tokenKey := range tokenKeys {
+			body := cloneMap(base)
+			body[tokenKey] = bindToken
+			attempts = append(attempts, bindAttempt{
+				Endpoint: endpoint,
+				Body:     body,
+			})
+		}
+	}
+	return attempts
+}
+
+func cloneMap(values map[string]any) map[string]any {
+	if len(values) == 0 {
+		return map[string]any{}
+	}
+	cloned := make(map[string]any, len(values))
+	for key, value := range values {
+		cloned[key] = value
+	}
+	return cloned
 }
 
 func isRouteNotFound(err error) bool {

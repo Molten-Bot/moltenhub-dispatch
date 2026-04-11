@@ -7,6 +7,7 @@ import (
 
 const (
 	OnboardingStepBind         = "bind"
+	OnboardingStepWorkBind     = "work_bind"
 	OnboardingStepProfileSet   = "profile_set"
 	OnboardingStepWorkActivate = "work_activate"
 )
@@ -70,6 +71,12 @@ func DefaultOnboardingSteps() []OnboardingStep {
 			Detail: "Exchange the bind token for an agent credential.",
 		},
 		{
+			ID:     OnboardingStepWorkBind,
+			Label:  "Work",
+			Status: "pending",
+			Detail: "Resolve and verify Molten Hub credentials.",
+		},
+		{
 			ID:     OnboardingStepProfileSet,
 			Label:  "Profile Set",
 			Status: "pending",
@@ -79,7 +86,7 @@ func DefaultOnboardingSteps() []OnboardingStep {
 			ID:     OnboardingStepWorkActivate,
 			Label:  "Work",
 			Status: "pending",
-			Detail: "Verify runtime endpoints and confirm activation.",
+			Detail: "Apply the runtime transport and confirm activation.",
 		},
 	}
 }
