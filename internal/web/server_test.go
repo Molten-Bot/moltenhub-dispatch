@@ -15,11 +15,12 @@ import (
 )
 
 type stubService struct {
-	state            app.AppState
-	bindErr          error
-	updateProfileErr error
-	bindStateOnError bool
-	lastBindProfile  app.BindProfile
+	state             app.AppState
+	bindErr           error
+	updateProfileErr  error
+	updateSettingsErr error
+	bindStateOnError  bool
+	lastBindProfile   app.BindProfile
 }
 
 func (s *stubService) Snapshot() app.AppState {
@@ -68,8 +69,11 @@ func (s *stubService) DispatchFromUI(context.Context, app.DispatchRequest) (app.
 	return app.PendingTask{}, nil
 }
 
-func (s *stubService) UpdateSettings(func(*app.Settings) error) error {
-	return nil
+func (s *stubService) UpdateSettings(mutator func(*app.Settings) error) error {
+	if s.updateSettingsErr != nil {
+		return s.updateSettingsErr
+	}
+	return mutator(&s.state.Settings)
 }
 
 func TestHandleBindRendersSubmittedTokenOnFailure(t *testing.T) {
@@ -213,6 +217,64 @@ func TestHandleOnboardingAPIReturnsSuccess(t *testing.T) {
 	}
 }
 
+func TestHandleOnboardingAPIUsesSubmittedRuntimeRegion(t *testing.T) {
+	t.Parallel()
+
+	stub := &stubService{state: app.AppState{Settings: app.DefaultSettings()}}
+	server, err := New(stub)
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/onboarding", strings.NewReader(`{"hub_region":"eu","bind_token":"bind-123","handle":"dispatch-agent"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 response, got %d", rec.Code)
+	}
+
+	if got, want := stub.state.Settings.HubRegion, app.HubRegionEU; got != want {
+		t.Fatalf("hub region = %q, want %q", got, want)
+	}
+	if got, want := stub.state.Settings.HubURL, "https://eu.hub.molten.bot"; got != want {
+		t.Fatalf("hub url = %q, want %q", got, want)
+	}
+}
+
+func TestHandleOnboardingAPIRejectsUnsupportedRuntimeRegion(t *testing.T) {
+	t.Parallel()
+
+	server, err := New(&stubService{state: app.AppState{Settings: app.DefaultSettings()}})
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/onboarding", strings.NewReader(`{"hub_region":"apac","bind_token":"bind-123","handle":"dispatch-agent"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 response, got %d", rec.Code)
+	}
+
+	var body struct {
+		OK    bool   `json:"ok"`
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.OK {
+		t.Fatalf("expected failure response, got %#v", body)
+	}
+	if !strings.Contains(body.Error, "unsupported hub runtime selection") {
+		t.Fatalf("unexpected error message: %#v", body)
+	}
+}
+
 func TestHandleIndexRendersAutoDismissingFlash(t *testing.T) {
 	t.Parallel()
 
@@ -305,14 +367,14 @@ func TestHandleIndexShowsBoundProfileState(t *testing.T) {
 	if strings.Contains(body, "Failure-review follow-ups always target the first connected agent marked as a failure reviewer.") {
 		t.Fatalf("did not expect removed failure reviewer hint, body=%s", body)
 	}
-	if !strings.Contains(body, `id="global-settings-form"`) {
-		t.Fatalf("expected global settings form id for auto-save, body=%s", body)
+	if strings.Contains(body, `id="bind-form"`) {
+		t.Fatalf("did not expect onboarding bind form once bound, body=%s", body)
 	}
-	if !strings.Contains(body, `data-auto-save-setting`) {
-		t.Fatalf("expected runtime inputs to opt into auto-save, body=%s", body)
+	if strings.Contains(body, `name="hub_region"`) {
+		t.Fatalf("did not expect runtime selector once bound, body=%s", body)
 	}
-	if strings.Contains(body, "https://na.hub.molten.bot") || strings.Contains(body, "https://eu.hub.molten.bot") {
-		t.Fatalf("did not expect runtime URLs to be rendered in global settings, body=%s", body)
+	if strings.Contains(body, `id="onboarding-modal-backdrop"`) {
+		t.Fatalf("did not expect onboarding modal once bound, body=%s", body)
 	}
 	if !strings.Contains(body, ">4. Manual Dispatch<") {
 		t.Fatalf("expected sub-actions when bound and connected, body=%s", body)
@@ -469,6 +531,12 @@ func TestHandleIndexRendersInteractiveOnboardingFlowForUnboundSession(t *testing
 	if !strings.Contains(body, `id="bind-form"`) {
 		t.Fatalf("expected bind form id for onboarding API flow, body=%s", body)
 	}
+	if !strings.Contains(body, `id="onboarding-modal-backdrop"`) {
+		t.Fatalf("expected onboarding modal for unbound session, body=%s", body)
+	}
+	if !strings.Contains(body, `name="hub_region"`) {
+		t.Fatalf("expected runtime region selector in onboarding modal, body=%s", body)
+	}
 	if !strings.Contains(body, `id="onboarding-steps"`) {
 		t.Fatalf("expected onboarding steps container, body=%s", body)
 	}
@@ -509,23 +577,20 @@ func TestHandleIndexRendersCompletedOnboardingFlowForBoundSession(t *testing.T) 
 	server.Handler().ServeHTTP(rec, req)
 
 	body := rec.Body.String()
-	if !strings.Contains(body, `onboarding-step onboarding-step-completed" data-step-id="bind"`) {
-		t.Fatalf("expected bind step to render as completed once bound, body=%s", body)
+	if strings.Contains(body, `id="onboarding-modal-backdrop"`) {
+		t.Fatalf("did not expect onboarding modal once already bound, body=%s", body)
 	}
-	if !strings.Contains(body, `onboarding-step onboarding-step-completed" data-step-id="work_bind"`) {
-		t.Fatalf("expected work_bind step to render as completed once bound, body=%s", body)
+	if strings.Contains(body, `id="onboarding-steps"`) {
+		t.Fatalf("did not expect onboarding steps section once already bound, body=%s", body)
 	}
-	if !strings.Contains(body, `onboarding-step onboarding-step-completed" data-step-id="profile_set"`) {
-		t.Fatalf("expected profile_set step to render as completed once bound, body=%s", body)
+	if strings.Contains(body, `name="hub_region"`) {
+		t.Fatalf("did not expect runtime selector once already bound, body=%s", body)
 	}
-	if !strings.Contains(body, `onboarding-step onboarding-step-completed" data-step-id="work_activate"`) {
-		t.Fatalf("expected work_activate step to render as completed once bound, body=%s", body)
+	if strings.Contains(body, `name="bind_token"`) {
+		t.Fatalf("did not expect bind token field once already bound, body=%s", body)
 	}
-	if !strings.Contains(body, `id="onboarding-message">Agent bound and profile registered.`) {
-		t.Fatalf("expected completed onboarding message once bound, body=%s", body)
-	}
-	if !strings.Contains(body, "Verify the existing Molten Hub agent credential.") {
-		t.Fatalf("expected bound onboarding bind detail to match hub existing-mode flow, body=%s", body)
+	if !strings.Contains(body, "Edit Agent Profile") {
+		t.Fatalf("expected profile editor once already bound, body=%s", body)
 	}
 }
 

@@ -3809,6 +3809,54 @@ legend {
   color: var(--text);
 }
 
+body.onboarding-modal-open {
+  overflow: hidden;
+}
+
+.onboarding-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(12px, 3vw, 28px);
+  background: var(--surface-auth-backdrop);
+  backdrop-filter: blur(10px) saturate(130%);
+  -webkit-backdrop-filter: blur(10px) saturate(130%);
+}
+
+.onboarding-modal {
+  width: min(920px, 100%);
+  max-height: min(92vh, 880px);
+  overflow: auto;
+  padding: clamp(16px, 2.4vw, 26px);
+  border: 1px solid var(--surface-auth-panel-border);
+  border-radius: 24px;
+  background: var(--surface-auth-panel-bg);
+  box-shadow: var(--surface-auth-panel-shadow);
+  display: grid;
+  gap: 16px;
+}
+
+.onboarding-modal-header {
+  display: grid;
+  gap: 8px;
+}
+
+.onboarding-modal-header h2 {
+  margin: 0;
+}
+
+.onboarding-modal-header p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.onboarding-modal .onboarding-flow {
+  margin: 0;
+}
+
 .onboarding-flow {
   margin-bottom: 16px;
   padding: 13px 14px;
@@ -3933,6 +3981,18 @@ pre {
   .shell {
     padding-inline: 12px;
     width: 100%;
+  }
+
+  .onboarding-modal-backdrop {
+    padding: 12px;
+    align-items: flex-start;
+  }
+
+  .onboarding-modal {
+    width: 100%;
+    max-height: calc(100vh - 24px);
+    border-radius: 18px;
+    padding: 14px;
   }
 
   .page-header {

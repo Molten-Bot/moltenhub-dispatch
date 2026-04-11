@@ -55,7 +55,7 @@ If a connected agent is marked as a failure reviewer, the first such agent is se
 
 The bundled UI provides:
 
-- A top-level global NA/EU runtime selector that applies to bind/register operations
+- A single first-run onboarding modal that captures NA/EU runtime selection plus bind/profile inputs in one submit flow
 - A staged onboarding flow (`bind` -> `work_bind` -> `profile_set` -> `work_activate`) that mirrors hub setup behavior, keeps fields read-only while onboarding requests run, and surfaces stage-specific failures from the backend
 - Connected-agent management
 - Manual dispatch of skill requests
