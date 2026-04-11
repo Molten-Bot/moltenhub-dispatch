@@ -108,7 +108,7 @@ func (s *Service) BindAndRegister(ctx context.Context, profile BindProfile) erro
 		Emoji:           profile.Emoji,
 		ProfileMarkdown: profile.ProfileMarkdown,
 	})
-	resolvedHandle, err := resolveBindHandle(profile.Email, agentProfile.Handle)
+	resolvedHandle, err := resolveBindHandle(agentProfile.Handle)
 	if err != nil {
 		return WrapOnboardingError(OnboardingStepBind, err)
 	}
@@ -1160,41 +1160,12 @@ func normalizeAgentProfile(profile AgentProfile) AgentProfile {
 	return profile
 }
 
-func resolveBindHandle(email, handle string) (string, error) {
+func resolveBindHandle(handle string) (string, error) {
 	handle = strings.TrimSpace(handle)
 	if handle != "" {
 		return handle, nil
 	}
-
-	derived, ok := handleFromEmailLocalPart(email)
-	if ok {
-		return derived, nil
-	}
-
-	return "", errors.New("handle is required unless a usable email local-part is provided")
-}
-
-func handleFromEmailLocalPart(email string) (string, bool) {
-	email = strings.TrimSpace(strings.ToLower(email))
-	if email == "" {
-		return "", false
-	}
-
-	localPart, _, found := strings.Cut(email, "@")
-	if !found {
-		return "", false
-	}
-	localPart = strings.TrimSpace(localPart)
-	if localPart == "" {
-		return "", false
-	}
-	for _, ch := range localPart {
-		if (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '.' || ch == '_' || ch == '-' {
-			continue
-		}
-		return "", false
-	}
-	return localPart, true
+	return "", errors.New("handle is required")
 }
 
 func buildAgentMetadata(profile AgentProfile, sessionKey string) map[string]any {

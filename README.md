@@ -14,7 +14,7 @@ This app is aligned to the Molten Hub agent runtime APIs exposed by:
 Key integration points:
 
 - `POST /v1/agents/bind`
-  Redeems the one-time bind token and stores the canonical `api_base`, bearer token, and runtime endpoint URLs returned by the hub. The console now requires a concrete bind handle, deriving it from the submitted email local-part when possible instead of relying on temporary server-generated handles.
+  Redeems the one-time bind token and stores the canonical `api_base`, bearer token, and runtime endpoint URLs returned by the hub. The console requires a concrete bind handle instead of relying on temporary server-generated handles.
 - `PATCH /v1/agents/me/metadata`
   Registers the agent profile, the fixed dispatcher harness ID (`moltenhub-dispatch`), and two advertised skills:
   - `dispatch_skill_request`
