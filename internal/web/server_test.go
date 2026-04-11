@@ -382,6 +382,41 @@ func TestHandleIndexUsesBioPlaceholderWithoutPrefilledDefaultText(t *testing.T) 
 	}
 }
 
+func TestHandleIndexRendersInteractiveEmojiPicker(t *testing.T) {
+	t.Parallel()
+
+	server, err := New(&stubService{
+		state: app.AppState{
+			Settings: app.DefaultSettings(),
+		},
+	})
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, `data-hub-emoji-picker`) {
+		t.Fatalf("expected interactive emoji picker root, body=%s", body)
+	}
+	if !strings.Contains(body, `data-hub-emoji-toggle`) {
+		t.Fatalf("expected interactive emoji picker toggle, body=%s", body)
+	}
+	if !strings.Contains(body, `data-hub-emoji-panel`) {
+		t.Fatalf("expected interactive emoji picker panel, body=%s", body)
+	}
+	if strings.Contains(body, `type="radio" name="emoji"`) {
+		t.Fatalf("did not expect legacy radio emoji options, body=%s", body)
+	}
+	if !strings.Contains(body, `const initHubEmojiPicker = (root) => {`) {
+		t.Fatalf("expected emoji picker client module to be embedded, body=%s", body)
+	}
+}
+
 func TestHandleIndexRendersInteractiveOnboardingFlowForUnboundSession(t *testing.T) {
 	t.Parallel()
 

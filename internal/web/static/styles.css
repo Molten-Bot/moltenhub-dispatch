@@ -2540,7 +2540,7 @@ select.prompt-control {
 
 .hub-emoji-picker {
   position: relative;
-  width: fit-content;
+  width: 100%;
   min-width: 0;
 }
 
@@ -2548,17 +2548,20 @@ select.prompt-control {
   position: relative;
   display: flex;
   align-items: center;
-  width: fit-content;
+  width: 100%;
+  min-width: 0;
 }
 
 .hub-emoji-picker-input {
   position: relative;
   z-index: 1;
-  width: 5.75rem;
-  min-width: 5.75rem;
-  padding-left: 12px;
+  width: 100%;
+  min-width: 0;
+  padding-left: 14px;
   padding-right: 52px;
   text-align: center;
+  font-size: 1.15rem;
+  line-height: 1;
 }
 
 .hub-emoji-picker-toggle {
@@ -2624,6 +2627,10 @@ select.prompt-control {
     inset 0 1px 0 color-mix(in srgb, var(--text) 8%, white);
   backdrop-filter: blur(22px) saturate(140%);
   -webkit-backdrop-filter: blur(22px) saturate(140%);
+}
+
+.hub-emoji-picker-panel[hidden] {
+  display: none;
 }
 
 .hub-emoji-picker-selected {
