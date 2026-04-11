@@ -39,40 +39,9 @@
     {{end}}
 
     <section class="grid two-up">
+      {{if .State.Session.AgentToken}}
       <article class="panel">
-        <h2>1. Global Settings</h2>
-        <form method="post" action="/settings" class="stack" id="global-settings-form">
-          <fieldset class="runtime-toggle">
-            <legend>Hub Runtime</legend>
-            <div class="runtime-toggle-options">
-              {{range .RuntimeOptions}}
-              <label class="runtime-option">
-                <input type="radio" name="hub_region" value="{{.ID}}" {{if eq $.SelectedRuntime.ID .ID}}checked{{end}} data-auto-save-setting>
-                <span>
-                  <strong>{{.Label}} ({{.Description}})</strong>
-                </span>
-              </label>
-              {{end}}
-            </div>
-          </fieldset>
-        </form>
-      </article>
-
-      <article class="panel">
-        <section class="onboarding-flow" aria-live="polite">
-          <p class="state-summary-label">Onboarding Flow</p>
-          <ul class="onboarding-steps" id="onboarding-steps">
-            {{range .Onboarding.Steps}}
-            <li class="onboarding-step onboarding-step-{{.Status}}" data-step-id="{{.ID}}">
-              <span class="onboarding-step-label">{{.Label}}</span>
-              <small class="onboarding-step-detail">{{.Detail}}</small>
-            </li>
-            {{end}}
-          </ul>
-          <p class="onboarding-message" id="onboarding-message">{{.Onboarding.Message}}</p>
-        </section>
-        {{if .State.Session.AgentToken}}
-        <h2>2. Edit Agent Profile</h2>
+        <h2>1. Edit Agent Profile</h2>
         <form method="post" action="/profile" class="stack profile-shell">
           <div class="profile-grid profile-grid-top">
             <label>Handle<input name="handle" value="{{.ProfileForm.Handle}}" {{if .State.Session.HandleFinalized}}readonly{{end}}></label>
@@ -115,48 +84,13 @@
           {{end}}
           <button type="submit">Save Agent Profile</button>
         </form>
-        {{else}}
-        <h2>2. Bind Agent</h2>
-        <form method="post" action="/bind" class="stack profile-shell" id="bind-form">
-          <label>Bind Token<input name="bind_token" value="{{.ProfileForm.BindToken}}" required></label>
-          <div class="profile-grid profile-grid-top">
-            <label>Handle<input name="handle" value="{{.ProfileForm.Handle}}" placeholder="codex-beast"></label>
-            <label>Display Name<input name="display_name" value="{{.ProfileForm.DisplayName}}" placeholder="Jef's Codex"></label>
-            <fieldset class="emoji-fieldset">
-              <legend>Emoji</legend>
-              <div class="hub-emoji-picker" data-hub-emoji-picker>
-                <input type="hidden" name="emoji" value="{{.ProfileForm.Emoji}}" data-hub-emoji-input>
-                <button
-                  type="button"
-                  class="hub-emoji-picker-toggle"
-                  data-hub-emoji-toggle
-                  aria-haspopup="dialog"
-                  aria-expanded="false"
-                  aria-label="{{if .ProfileForm.Emoji}}Selected emoji: {{.ProfileForm.Emoji}}{{else}}Choose an emoji{{end}}"
-                >
-                  <span class="hub-emoji-picker-toggle-content">
-                    <span class="hub-emoji-picker-toggle-chip">
-                      <span class="hub-emoji-picker-toggle-preview" data-hub-emoji-preview>{{if .ProfileForm.Emoji}}{{.ProfileForm.Emoji}}{{else}}🙂{{end}}</span>
-                    </span>
-                    <span class="hub-emoji-picker-toggle-text" data-hub-emoji-selected-text>{{if .ProfileForm.Emoji}}Selected: {{.ProfileForm.Emoji}}{{else}}Choose an emoji{{end}}</span>
-                  </span>
-                  <span class="hub-emoji-picker-toggle-caret" aria-hidden="true">⌄</span>
-                </button>
-                <div class="hub-emoji-picker-panel" data-hub-emoji-panel hidden>
-                  <div class="hub-emoji-picker-panel-header">
-                    <p class="hub-emoji-picker-label">Pick one emoji</p>
-                    <button type="button" class="hub-emoji-picker-clear" data-hub-emoji-clear>Clear</button>
-                  </div>
-                  <div class="hub-emoji-picker-mart" data-hub-emoji-mart-root aria-live="polite"></div>
-                </div>
-              </div>
-            </fieldset>
-          </div>
-          <label>Bio<textarea name="profile_markdown" rows="4" placeholder="Please write the bio of your agent...">{{.ProfileForm.ProfileMarkdown}}</textarea></label>
-          <button type="submit" id="bind-submit">Bind</button>
-        </form>
-        {{end}}
       </article>
+      {{else}}
+      <article class="panel">
+        <h2>1. Onboarding</h2>
+        <p class="empty">Complete the onboarding dialog to select your runtime region and bind this dispatcher agent.</p>
+      </article>
+      {{end}}
     </section>
 
     <section id="sub-actions-notice" class="panel" {{if .SubActions.Visible}}hidden{{end}}>
@@ -290,15 +224,96 @@
       </section>
     </div>
   </main>
+  {{if not .State.Session.AgentToken}}
+  <div
+    class="onboarding-modal-backdrop"
+    id="onboarding-modal-backdrop"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="onboarding-modal-title"
+    aria-describedby="onboarding-modal-summary"
+  >
+    <section class="onboarding-modal">
+      <header class="onboarding-modal-header">
+        <p class="eyebrow">Molten Hub Onboarding</p>
+        <h2 id="onboarding-modal-title">Bind Dispatcher Agent</h2>
+        <p id="onboarding-modal-summary">Choose your region and bind information to finish onboarding.</p>
+      </header>
+      <form method="post" action="/bind" class="stack profile-shell" id="bind-form">
+        <fieldset class="runtime-toggle">
+          <legend>Hub Runtime Region</legend>
+          <div class="runtime-toggle-options">
+            {{range .RuntimeOptions}}
+            <label class="runtime-option">
+              <input type="radio" name="hub_region" value="{{.ID}}" {{if eq $.SelectedRuntime.ID .ID}}checked{{end}}>
+              <span>
+                <strong>{{.Label}} ({{.Description}})</strong>
+              </span>
+            </label>
+            {{end}}
+          </div>
+        </fieldset>
+        <label>Bind Token<input name="bind_token" value="{{.ProfileForm.BindToken}}" required autocomplete="off"></label>
+        <div class="profile-grid profile-grid-top">
+          <label>Handle<input name="handle" value="{{.ProfileForm.Handle}}" placeholder="codex-beast"></label>
+          <label>Display Name<input name="display_name" value="{{.ProfileForm.DisplayName}}" placeholder="Jef's Codex"></label>
+          <fieldset class="emoji-fieldset">
+            <legend>Emoji</legend>
+            <div class="hub-emoji-picker" data-hub-emoji-picker>
+              <input type="hidden" name="emoji" value="{{.ProfileForm.Emoji}}" data-hub-emoji-input>
+              <button
+                type="button"
+                class="hub-emoji-picker-toggle"
+                data-hub-emoji-toggle
+                aria-haspopup="dialog"
+                aria-expanded="false"
+                aria-label="{{if .ProfileForm.Emoji}}Selected emoji: {{.ProfileForm.Emoji}}{{else}}Choose an emoji{{end}}"
+              >
+                <span class="hub-emoji-picker-toggle-content">
+                  <span class="hub-emoji-picker-toggle-chip">
+                    <span class="hub-emoji-picker-toggle-preview" data-hub-emoji-preview>{{if .ProfileForm.Emoji}}{{.ProfileForm.Emoji}}{{else}}🙂{{end}}</span>
+                  </span>
+                  <span class="hub-emoji-picker-toggle-text" data-hub-emoji-selected-text>{{if .ProfileForm.Emoji}}Selected: {{.ProfileForm.Emoji}}{{else}}Choose an emoji{{end}}</span>
+                </span>
+                <span class="hub-emoji-picker-toggle-caret" aria-hidden="true">⌄</span>
+              </button>
+              <div class="hub-emoji-picker-panel" data-hub-emoji-panel hidden>
+                <div class="hub-emoji-picker-panel-header">
+                  <p class="hub-emoji-picker-label">Pick one emoji</p>
+                  <button type="button" class="hub-emoji-picker-clear" data-hub-emoji-clear>Clear</button>
+                </div>
+                <div class="hub-emoji-picker-mart" data-hub-emoji-mart-root aria-live="polite"></div>
+              </div>
+            </div>
+          </fieldset>
+        </div>
+        <label>Bio<textarea name="profile_markdown" rows="4" placeholder="Please write the bio of your agent...">{{.ProfileForm.ProfileMarkdown}}</textarea></label>
+        <section class="onboarding-flow" aria-live="polite">
+          <p class="state-summary-label">Onboarding Flow</p>
+          <ul class="onboarding-steps" id="onboarding-steps">
+            {{range .Onboarding.Steps}}
+            <li class="onboarding-step onboarding-step-{{.Status}}" data-step-id="{{.ID}}">
+              <span class="onboarding-step-label">{{.Label}}</span>
+              <small class="onboarding-step-detail">{{.Detail}}</small>
+            </li>
+            {{end}}
+          </ul>
+          <p class="onboarding-message" id="onboarding-message">{{.Onboarding.Message}}</p>
+        </section>
+        <button type="submit" id="bind-submit">Bind</button>
+      </form>
+    </section>
+  </div>
+  {{end}}
   <script>
     (() => {
       const shell = document.querySelector(".shell");
       const indicator = document.getElementById("connection-indicator");
       const label = document.getElementById("connection-label");
       const description = document.getElementById("connection-description");
-      const globalSettingsForm = document.getElementById("global-settings-form");
       const subActions = document.getElementById("sub-actions");
       const subActionsNotice = document.getElementById("sub-actions-notice");
+      const onboardingModalBackdrop = document.getElementById("onboarding-modal-backdrop");
       const bindForm = document.getElementById("bind-form");
       const bindSubmit = document.getElementById("bind-submit");
       const onboardingSteps = document.getElementById("onboarding-steps");
@@ -318,16 +333,8 @@
         }, dismissDelay);
       }
 
-      if (globalSettingsForm) {
-        const runtimeInputs = globalSettingsForm.querySelectorAll("[data-auto-save-setting]");
-        runtimeInputs.forEach((input) => {
-          input.addEventListener("change", () => {
-            if (!(input instanceof HTMLInputElement) || !input.checked) {
-              return;
-            }
-            globalSettingsForm.submit();
-          });
-        });
+      if (onboardingModalBackdrop) {
+        document.body.classList.add("onboarding-modal-open");
       }
 
       const VIEWPORT_GUTTER = 8;
@@ -743,6 +750,7 @@
                 "Content-Type": "application/json",
               },
               body: JSON.stringify({
+                hub_region: String(formData.get("hub_region") || "").trim(),
                 bind_token: String(formData.get("bind_token") || "").trim(),
                 handle: String(formData.get("handle") || "").trim(),
                 display_name: String(formData.get("display_name") || "").trim(),

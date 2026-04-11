@@ -132,6 +132,11 @@ func (s *Server) handleBind(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	form := profileFormFromRequest(r)
+	if err := s.applyRuntimeSelection(r.FormValue("hub_region")); err != nil {
+		onboarding := onboardingViewFromError(s.service.Snapshot(), app.WrapOnboardingError(app.OnboardingStepBind, err))
+		s.renderIndex(w, r, err.Error(), true, form, &onboarding)
+		return
+	}
 	if err := s.service.BindAndRegister(r.Context(), app.BindProfile{
 		BindToken:       strings.TrimSpace(r.FormValue("bind_token")),
 		Handle:          form.Handle,
@@ -184,6 +189,7 @@ func (s *Server) handleOnboarding(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var payload struct {
+		HubRegion       string `json:"hub_region"`
 		BindToken       string `json:"bind_token"`
 		Handle          string `json:"handle"`
 		DisplayName     string `json:"display_name"`
@@ -197,6 +203,17 @@ func (s *Server) handleOnboarding(w http.ResponseWriter, r *http.Request) {
 			"error":      "invalid onboarding request",
 			"onboarding": onboarding,
 			"bound":      false,
+		})
+		return
+	}
+	if err := s.applyRuntimeSelection(payload.HubRegion); err != nil {
+		state := s.service.Snapshot()
+		onboarding := onboardingViewFromError(state, app.WrapOnboardingError(app.OnboardingStepBind, err))
+		writeJSON(w, http.StatusBadRequest, map[string]any{
+			"ok":         false,
+			"error":      err.Error(),
+			"onboarding": onboarding,
+			"bound":      strings.TrimSpace(state.Session.AgentToken) != "",
 		})
 		return
 	}
@@ -318,18 +335,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		s.redirectWithMessage(w, r, "error", err.Error())
 		return
 	}
-	err := s.service.UpdateSettings(func(settings *app.Settings) error {
-		if runtimeID := strings.TrimSpace(r.FormValue("hub_region")); runtimeID != "" {
-			runtime, err := app.ResolveHubRuntime(runtimeID, "")
-			if err != nil {
-				return err
-			}
-			settings.HubRegion = runtime.ID
-			settings.HubURL = runtime.HubURL
-		}
-		return nil
-	})
-	if err != nil {
+	if err := s.applyRuntimeSelection(r.FormValue("hub_region")); err != nil {
 		s.redirectWithMessage(w, r, "error", err.Error())
 		return
 	}
@@ -344,6 +350,22 @@ func (s *Server) handleStyles(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/css; charset=utf-8")
 	_, _ = w.Write(data)
+}
+
+func (s *Server) applyRuntimeSelection(runtimeID string) error {
+	runtimeID = strings.TrimSpace(runtimeID)
+	if runtimeID == "" {
+		return nil
+	}
+	runtime, err := app.ResolveHubRuntime(runtimeID, "")
+	if err != nil {
+		return err
+	}
+	return s.service.UpdateSettings(func(settings *app.Settings) error {
+		settings.HubRegion = runtime.ID
+		settings.HubURL = runtime.HubURL
+		return nil
+	})
 }
 
 func (s *Server) redirectWithMessage(w http.ResponseWriter, r *http.Request, level, message string) {
