@@ -169,11 +169,11 @@ func TestHandleIndexShowsBoundProfileState(t *testing.T) {
 	if !strings.Contains(body, `id="connection-indicator"`) {
 		t.Fatalf("expected connection indicator in page, body=%s", body)
 	}
-	if !strings.Contains(body, "Bound Session") {
-		t.Fatalf("expected bound session summary, body=%s", body)
+	if strings.Contains(body, "Awaiting Bind") {
+		t.Fatalf("did not expect removed bind state section, body=%s", body)
 	}
-	if !strings.Contains(body, "The one-time bind token is no longer needed here.") {
-		t.Fatalf("expected bound-state explanation, body=%s", body)
+	if strings.Contains(body, "one-time bind token") {
+		t.Fatalf("did not expect removed bind state copy, body=%s", body)
 	}
 	if strings.Contains(body, ">Runtime<") {
 		t.Fatalf("did not expect removed runtime panel, body=%s", body)
@@ -304,9 +304,6 @@ func TestHandleBindShowsEditProfileAfterSessionBecomesBound(t *testing.T) {
 	}
 	if !strings.Contains(body, "Edit Agent Profile") {
 		t.Fatalf("expected edit profile panel after bound session, body=%s", body)
-	}
-	if !strings.Contains(body, "live connection is currently offline") {
-		t.Fatalf("expected offline bound-state summary, body=%s", body)
 	}
 	if !strings.Contains(body, "agent bound, but profile registration failed") {
 		t.Fatalf("expected surfaced bind error, body=%s", body)
