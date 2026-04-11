@@ -336,6 +336,35 @@ func TestHandleIndexRendersAutoDismissingFlash(t *testing.T) {
 	}
 }
 
+func TestHandleIndexRendersConsoleTitleAndSubtitle(t *testing.T) {
+	t.Parallel()
+
+	server, err := New(&stubService{
+		state: app.AppState{
+			Settings: app.DefaultSettings(),
+		},
+	})
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+
+	server.renderIndex(rec, req, "", false, agentProfileForm{}, nil)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, `<title>Molten Hub Console</title>`) {
+		t.Fatalf("expected document title to be Molten Hub Console, body=%s", body)
+	}
+	if !strings.Contains(body, `>Molten Hub Console</p>`) {
+		t.Fatalf("expected page header title copy, body=%s", body)
+	}
+	if !strings.Contains(body, `>Dispatch work to your quiet army.</p>`) {
+		t.Fatalf("expected page header subtitle copy, body=%s", body)
+	}
+}
+
 func TestHandleIndexConsumesFlashOnlyOnce(t *testing.T) {
 	t.Parallel()
 
@@ -529,6 +558,12 @@ func TestHandleIndexShowsConnectAgentsPanelWhenNoConnectedAgents(t *testing.T) {
 	}
 	if !strings.Contains(body, "Connect agents in Molten Bot Hub") {
 		t.Fatalf("expected connect-agents panel copy, body=%s", body)
+	}
+	if !strings.Contains(body, "No connected agents are available yet. Connect agents in Molten Bot Hub to enable Dispatch.") {
+		t.Fatalf("expected connect-agents reason to mention Dispatch, body=%s", body)
+	}
+	if strings.Contains(body, "enable Manual Dispatch") {
+		t.Fatalf("did not expect legacy Manual Dispatch wording in connect-agents reason, body=%s", body)
 	}
 	if !strings.Contains(body, `class="sub-actions-hub-link" href="https://app.molten.bot/hub"`) {
 		t.Fatalf("expected connect-agents panel link to Molten Bot Hub dashboard, body=%s", body)
@@ -1330,6 +1365,12 @@ func TestHandleIndexRendersConnectedAgentsRefreshPanel(t *testing.T) {
 	}
 	if !strings.Contains(body, `const connectedAgentsRefreshButtons = Array.from(document.querySelectorAll("[data-connected-agents-refresh-button]"));`) {
 		t.Fatalf("expected shared manual refresh button hooks, body=%s", body)
+	}
+	if !strings.Contains(body, `setConnectedAgentsRefreshState(false, "Updated.");`) {
+		t.Fatalf("expected refresh completion message without timestamp, body=%s", body)
+	}
+	if strings.Contains(body, "toLocaleTimeString") {
+		t.Fatalf("did not expect connected agents refresh timestamp formatting, body=%s", body)
 	}
 }
 

@@ -16,7 +16,10 @@
     data-connected-agent-count="{{len .State.ConnectedAgents}}"
   >
     <header class="page-header">
-      <p class="eyebrow">Molten Hub Console</p>
+      <div class="page-title-block">
+        <p class="eyebrow">Molten Hub Console</p>
+        <p class="page-subtitle">Dispatch work to your quiet army.</p>
+      </div>
       <div class="status-row connection-status-row" aria-live="polite">
         <div
           id="hub-conn-item"
@@ -1128,7 +1131,7 @@
         }
 
         const reason = requiresAgentConnection
-          ? "No connected agents are available yet. Connect agents in Molten Bot Hub to enable Manual Dispatch."
+          ? "No connected agents are available yet. Connect agents in Molten Bot Hub to enable Dispatch."
           : (bound
             ? "Sub-actions stay hidden while the Hub connection is offline or unavailable."
             : "Sub-actions stay hidden until this runtime is bound to Molten Hub and connectivity is working.");
@@ -1415,8 +1418,7 @@
             ? body.connected_agents
             : [];
           renderConnectedAgents(agents);
-          const refreshedAt = new Date().toLocaleTimeString();
-          setConnectedAgentsRefreshState(false, `Updated ${refreshedAt}`);
+          setConnectedAgentsRefreshState(false, "Updated.");
         } catch (error) {
           const message = error instanceof Error ? error.message : "Unable to refresh connected agents.";
           setConnectedAgentsRefreshState(false, message, true);
