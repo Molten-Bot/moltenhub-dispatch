@@ -38,6 +38,7 @@ type fakeHubClient struct {
 	pingCalls             int
 	connectErr            error
 	connectSession        hub.RealtimeSession
+	connectCalls          int
 	publishErr            error
 }
 
@@ -121,6 +122,7 @@ func (f *fakeHubClient) SetBaseURL(baseURL string) {
 }
 
 func (f *fakeHubClient) ConnectOpenClaw(_ context.Context, _ string, _ string) (hub.RealtimeSession, error) {
+	f.connectCalls++
 	if len(f.baseURLCalls) == 0 {
 		f.baseURLCalls = append(f.baseURLCalls, f.currentBaseURL)
 	}
@@ -1749,6 +1751,7 @@ func TestRunHubLoopFallsBackToHTTPLongPollWhenWebsocketUnavailable(t *testing.T)
 	err := service.store.Update(func(state *AppState) error {
 		state.Session.AgentToken = "agent-token"
 		state.Session.APIBase = "https://na.hub.molten.bot/v1"
+		state.Settings.PollInterval = 10 * time.Millisecond
 		return nil
 	})
 	if err != nil {
@@ -1775,9 +1778,13 @@ func TestRunHubLoopFallsBackToHTTPLongPollWhenWebsocketUnavailable(t *testing.T)
 		case <-time.After(10 * time.Millisecond):
 		}
 	}
+	time.Sleep(120 * time.Millisecond)
 
 	cancel()
 	<-done
+	if fake.connectCalls != 1 {
+		t.Fatalf("expected one websocket connect attempt during HTTP fallback window, got %d", fake.connectCalls)
+	}
 
 	state := service.store.Snapshot()
 	if state.Connection.Status != ConnectionStatusConnected {
@@ -1801,6 +1808,7 @@ func TestRunHubLoopFallsBackToHTTPLongPollAfterRealtimeDisconnect(t *testing.T) 
 	err := service.store.Update(func(state *AppState) error {
 		state.Session.AgentToken = "agent-token"
 		state.Session.APIBase = "https://na.hub.molten.bot/v1"
+		state.Settings.PollInterval = 10 * time.Millisecond
 		return nil
 	})
 	if err != nil {
@@ -1827,9 +1835,13 @@ func TestRunHubLoopFallsBackToHTTPLongPollAfterRealtimeDisconnect(t *testing.T) 
 		case <-time.After(10 * time.Millisecond):
 		}
 	}
+	time.Sleep(120 * time.Millisecond)
 
 	cancel()
 	<-done
+	if fake.connectCalls != 1 {
+		t.Fatalf("expected one websocket reconnect attempt before HTTP fallback window, got %d", fake.connectCalls)
+	}
 
 	state := service.store.Snapshot()
 	if state.Connection.Status != ConnectionStatusConnected {
@@ -1944,6 +1956,54 @@ func TestConsumeRealtimeSessionMarksWebsocketConnectivityAndAcksDeliveries(t *te
 	}
 	if state.Connection.Transport != ConnectionTransportWebSocket {
 		t.Fatalf("expected websocket transport, got %#v", state.Connection)
+	}
+}
+
+func TestSetAndConsumeFlashState(t *testing.T) {
+	t.Parallel()
+
+	service, _ := newTestService(t)
+
+	if err := service.SetFlash("error", "hub API 401 unauthorized: missing or invalid bearer token"); err != nil {
+		t.Fatalf("set flash: %v", err)
+	}
+
+	snapshot := service.Snapshot()
+	if got := snapshot.Flash.Level; got != "error" {
+		t.Fatalf("flash level = %q, want error", got)
+	}
+	if got := snapshot.Flash.Message; got != "hub API 401 unauthorized: missing or invalid bearer token" {
+		t.Fatalf("unexpected flash message: %q", got)
+	}
+
+	flash, err := service.ConsumeFlash()
+	if err != nil {
+		t.Fatalf("consume flash: %v", err)
+	}
+	if flash.Level != "error" || flash.Message == "" {
+		t.Fatalf("unexpected consumed flash: %#v", flash)
+	}
+
+	if got := service.Snapshot().Flash; got.Message != "" || got.Level != "" {
+		t.Fatalf("expected consumed flash to be cleared, got %#v", got)
+	}
+}
+
+func TestSetFlashNormalizesInfoLevel(t *testing.T) {
+	t.Parallel()
+
+	service, _ := newTestService(t)
+
+	if err := service.SetFlash("warn", "settings updated"); err != nil {
+		t.Fatalf("set flash: %v", err)
+	}
+
+	flash := service.Snapshot().Flash
+	if flash.Level != "info" {
+		t.Fatalf("expected info level fallback, got %#v", flash)
+	}
+	if flash.Message != "settings updated" {
+		t.Fatalf("unexpected flash message: %#v", flash)
 	}
 }
 
