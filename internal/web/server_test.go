@@ -612,6 +612,9 @@ func TestHandleIndexRendersBottomDockAndSettingsDialogForBoundSession(t *testing
 	if !strings.Contains(body, `<span id="theme-toggle-label">Dark</span>`) {
 		t.Fatalf("expected dark as the initial theme label, body=%s", body)
 	}
+	if !strings.Contains(body, `<div class="site-bg" aria-hidden="true">`) || !strings.Contains(body, `id="snowfall-canvas"`) {
+		t.Fatalf("expected themed background shell with snowfall canvas, body=%s", body)
+	}
 	if !strings.Contains(body, `id="agent-settings-modal-backdrop"`) {
 		t.Fatalf("expected agent settings dialog markup, body=%s", body)
 	}
@@ -635,6 +638,9 @@ func TestHandleIndexRendersBottomDockAndSettingsDialogForBoundSession(t *testing
 	}
 	if !strings.Contains(body, `themeToggleButton.addEventListener("click", () => {`) || !strings.Contains(body, `applyThemeMode(nextThemeMode(currentThemeMode()), true);`) {
 		t.Fatalf("expected theme toggle click cycle handler, body=%s", body)
+	}
+	if !strings.Contains(body, `const initSnowfallBackground = () => {`) || !strings.Contains(body, `initSnowfallBackground();`) {
+		t.Fatalf("expected snowfall background animation initialization, body=%s", body)
 	}
 	if !strings.Contains(body, `const setAgentSettingsModalOpen = (open, returnFocus = false) => {`) {
 		t.Fatalf("expected settings dialog open/close handler, body=%s", body)
