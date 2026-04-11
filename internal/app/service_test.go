@@ -668,6 +668,64 @@ func TestUpdateAgentProfileDoesNotResubmitUnchangedTemporaryHandle(t *testing.T)
 	}
 }
 
+func TestUpdateAgentProfileUsesPersistedSessionRoutingAfterRestart(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	settings := DefaultSettings()
+	settings.DataDir = dir
+	store, err := NewStore(filepath.Join(dir, "config.json"), settings)
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	err = store.Update(func(state *AppState) error {
+		state.Settings.HubURL = "https://na.hub.molten.bot"
+		state.Session.AgentToken = "agent-token"
+		state.Session.Handle = "dispatch-agent"
+		state.Session.HandleFinalized = true
+		state.Session.APIBase = "https://runtime.na.hub.molten.bot"
+		state.Session.MetadataURL = "https://runtime.na.hub.molten.bot/profile"
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("seed store: %v", err)
+	}
+
+	fake := &fakeHubClient{
+		currentBaseURL:      "https://na.hub.molten.bot",
+		expectedMetadataURL: "https://runtime.na.hub.molten.bot",
+	}
+	service := NewService(store, fake)
+	fake.currentBaseURL = "https://na.hub.molten.bot"
+
+	err = service.UpdateAgentProfile(context.Background(), AgentProfile{
+		DisplayName:     "Dispatch Agent",
+		Emoji:           "🤖",
+		ProfileMarkdown: "Updated after restart.",
+	})
+	if err != nil {
+		t.Fatalf("update profile: %v", err)
+	}
+
+	if len(fake.updateMetadataCalls) != 1 {
+		t.Fatalf("expected one metadata update, got %d", len(fake.updateMetadataCalls))
+	}
+	if fake.updateMetadataCalls[0].Handle != "dispatch-agent" {
+		t.Fatalf("expected persisted handle to be reused, got %q", fake.updateMetadataCalls[0].Handle)
+	}
+	if got := fake.baseURLCalls[len(fake.baseURLCalls)-1]; got != "https://runtime.na.hub.molten.bot" {
+		t.Fatalf("expected runtime api_base before profile update, got %#v", fake.baseURLCalls)
+	}
+
+	configData, err := os.ReadFile(filepath.Join(dir, "config.json"))
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	if !strings.Contains(string(configData), "\"agent_token\": \"agent-token\"") {
+		t.Fatalf("expected persisted agent token in config.json, got %s", string(configData))
+	}
+}
+
 func TestHandleDispatchResolutionFailureSendsDetailedFailureAndQueuesFollowUp(t *testing.T) {
 	t.Parallel()
 
