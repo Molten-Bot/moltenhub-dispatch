@@ -48,8 +48,11 @@
     {{end}}
 
     <section id="sub-actions-notice" class="panel" {{if .SubActions.Visible}}hidden{{end}}>
-      <h2>Sub-Actions Hidden</h2>
-      <p class="empty">{{.SubActions.Reason}}</p>
+      <h2 data-sub-actions-title>{{if .SubActions.RequiresAgentConnection}}Connect agents in Molten Bot Hub{{else}}Sub-Actions Hidden{{end}}</h2>
+      <p class="empty" data-sub-actions-reason>{{.SubActions.Reason}}</p>
+      <p class="sub-actions-hub-link-row" data-sub-actions-connect-panel {{if not .SubActions.RequiresAgentConnection}}hidden{{end}}>
+        <a class="sub-actions-hub-link" href="{{if .SubActions.AgentConnectURL}}{{.SubActions.AgentConnectURL}}{{else}}https://app.molten.bot/hub{{end}}" target="_blank" rel="noreferrer noopener">Connect agents in Molten Bot Hub</a>
+      </p>
     </section>
 
     <div id="sub-actions" {{if not .SubActions.Visible}}hidden{{end}}>
@@ -167,7 +170,7 @@
       <a
         id="moltenbot-hub-link"
         class="prompt-mode-link prompt-mode-link-logo"
-        href="https://app.molten.bot/signin?target=hub"
+        href="https://app.molten.bot/hub"
         target="_blank"
         rel="noreferrer noopener"
         aria-label="Open Molten Bot Hub in a new window"
@@ -1027,22 +1030,43 @@
 
       const HUB_LOGIN_URL = "https://app.molten.bot/signin?target=hub";
       const HUB_DASHBOARD_URL = "https://app.molten.bot/hub";
+      const HAS_CONNECTED_AGENTS = {{if .State.ConnectedAgents}}true{{else}}false{{end}};
 
       const syncSubActions = (state) => {
         if (!subActions || !subActionsNotice) {
           return;
         }
         const connected = bound && (state.status === "connected" || state.transport === "ws" || state.transport === "http_long_poll" || state.transport === "connected");
-        subActions.hidden = !connected;
-        subActionsNotice.hidden = connected;
-        if (!connected) {
-          const reason = bound
+        const dispatchEnabled = connected && HAS_CONNECTED_AGENTS;
+        const requiresAgentConnection = connected && !HAS_CONNECTED_AGENTS;
+
+        subActions.hidden = !dispatchEnabled;
+        subActionsNotice.hidden = dispatchEnabled;
+
+        if (dispatchEnabled) {
+          return;
+        }
+
+        const title = subActionsNotice.querySelector("[data-sub-actions-title]");
+        if (title instanceof HTMLElement) {
+          title.textContent = requiresAgentConnection
+            ? "Connect agents in Molten Bot Hub"
+            : "Sub-Actions Hidden";
+        }
+
+        const reason = requiresAgentConnection
+          ? "No connected agents are available yet. Connect agents in Molten Bot Hub to enable Manual Dispatch."
+          : (bound
             ? "Sub-actions stay hidden while the Hub connection is offline or unavailable."
-            : "Sub-actions stay hidden until this runtime is bound to Molten Hub and connectivity is working.";
-          const empty = subActionsNotice.querySelector(".empty");
-          if (empty instanceof HTMLElement) {
-            empty.textContent = reason;
-          }
+            : "Sub-actions stay hidden until this runtime is bound to Molten Hub and connectivity is working.");
+        const empty = subActionsNotice.querySelector("[data-sub-actions-reason]");
+        if (empty instanceof HTMLElement) {
+          empty.textContent = reason;
+        }
+
+        const connectPanel = subActionsNotice.querySelector("[data-sub-actions-connect-panel]");
+        if (connectPanel instanceof HTMLElement) {
+          connectPanel.hidden = !requiresAgentConnection;
         }
       };
 
