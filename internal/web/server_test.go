@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/moltenbot000/moltenhub-dispatch/internal/app"
+	"github.com/moltenbot000/moltenhub-dispatch/internal/hub"
 )
 
 type stubService struct {
@@ -209,6 +210,91 @@ func TestHandleOnboardingAPIReturnsSuccess(t *testing.T) {
 	}
 	if got, want := body.Onboarding.Steps[0].Detail, "Exchange the bind token for an agent credential."; got != want {
 		t.Fatalf("bind step detail = %q, want %q", got, want)
+	}
+}
+
+func TestHandleOnboardingAPISupportsExistingAgentToken(t *testing.T) {
+	t.Parallel()
+
+	stub := &stubService{state: app.AppState{Settings: app.DefaultSettings()}}
+	server, err := New(stub)
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/onboarding", strings.NewReader(`{"agent_token":"agent-123","display_name":"Dispatch Agent"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 response, got %d", rec.Code)
+	}
+
+	var body struct {
+		OK      bool   `json:"ok"`
+		Message string `json:"message"`
+		Bound   bool   `json:"bound"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !body.OK || !body.Bound {
+		t.Fatalf("expected success body, got %#v", body)
+	}
+	if body.Message != "Existing agent credential verified and dispatcher connected." {
+		t.Fatalf("unexpected message: %#v", body)
+	}
+	if got, want := stub.lastBindProfile.AgentToken, "agent-123"; got != want {
+		t.Fatalf("expected existing agent token to be forwarded, got %#v", stub.lastBindProfile)
+	}
+}
+
+func TestHandleOnboardingAPIReturnsFriendlyAuthFailure(t *testing.T) {
+	t.Parallel()
+
+	server, err := New(&stubService{
+		bindErr: app.WrapOnboardingError(app.OnboardingStepWorkBind, &hub.APIError{
+			StatusCode: http.StatusUnauthorized,
+			Code:       "unauthorized",
+			Message:    "missing or invalid bearer token",
+		}),
+	})
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/onboarding", strings.NewReader(`{"agent_token":"agent-123"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 response, got %d", rec.Code)
+	}
+
+	var body struct {
+		OK         bool   `json:"ok"`
+		Error      string `json:"error"`
+		Onboarding struct {
+			Stage   string `json:"stage"`
+			Message string `json:"message"`
+		} `json:"onboarding"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.OK {
+		t.Fatalf("expected failure body, got %#v", body)
+	}
+	if body.Error != app.HubAuthReconnectMessage() {
+		t.Fatalf("unexpected auth error message: %#v", body)
+	}
+	if body.Onboarding.Stage != app.OnboardingStepWorkBind {
+		t.Fatalf("unexpected onboarding stage: %#v", body)
+	}
+	if body.Onboarding.Message != app.HubAuthReconnectMessage() {
+		t.Fatalf("unexpected onboarding message: %#v", body)
 	}
 }
 
@@ -639,6 +725,9 @@ func TestHandleIndexRendersInteractiveOnboardingFlowForUnboundSession(t *testing
 	if !strings.Contains(body, `id="bind-form"`) {
 		t.Fatalf("expected bind form id for onboarding API flow, body=%s", body)
 	}
+	if !strings.Contains(body, `name="agent_token"`) {
+		t.Fatalf("expected existing bearer token field in onboarding modal, body=%s", body)
+	}
 	if !strings.Contains(body, `id="onboarding-modal-backdrop"`) {
 		t.Fatalf("expected onboarding modal for unbound session, body=%s", body)
 	}
@@ -650,6 +739,9 @@ func TestHandleIndexRendersInteractiveOnboardingFlowForUnboundSession(t *testing
 	}
 	if !strings.Contains(body, `id="onboarding-message"`) {
 		t.Fatalf("expected onboarding message container, body=%s", body)
+	}
+	if !strings.Contains(body, `agent_token: agentTokenValue`) {
+		t.Fatalf("expected onboarding API payload to include agent_token, body=%s", body)
 	}
 	if !strings.Contains(body, `onboarding-step onboarding-step-current" data-step-id="bind"`) {
 		t.Fatalf("expected bind step to render as current in unbound state, body=%s", body)
@@ -971,6 +1063,50 @@ func TestHandleStatusReturnsRetryingConnectionView(t *testing.T) {
 	}
 	if view.HubDetail == "" {
 		t.Fatalf("expected retry detail in status payload: %#v", view)
+	}
+}
+
+func TestHandleStatusReturnsAuthRequiredConnectionView(t *testing.T) {
+	t.Parallel()
+
+	server, err := New(&stubService{
+		state: app.AppState{
+			Connection: app.ConnectionState{
+				Status:    app.ConnectionStatusDisconnected,
+				Transport: app.ConnectionTransportAuth,
+				Detail:    app.HubAuthReconnectMessage(),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/status", nil)
+	rec := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 response, got %d", rec.Code)
+	}
+
+	var view struct {
+		Transport   string `json:"transport"`
+		Label       string `json:"label"`
+		Description string `json:"description"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &view); err != nil {
+		t.Fatalf("decode status response: %v", err)
+	}
+	if view.Transport != app.ConnectionTransportAuth {
+		t.Fatalf("unexpected transport: %#v", view)
+	}
+	if view.Label != "Authentication Required" {
+		t.Fatalf("unexpected label: %#v", view)
+	}
+	if view.Description != app.HubAuthReconnectMessage() {
+		t.Fatalf("unexpected description: %#v", view)
 	}
 }
 

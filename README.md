@@ -15,6 +15,8 @@ Key integration points:
 
 - `POST /v1/agents/bind`
   Redeems the one-time bind token and stores the canonical `api_base`, bearer token, and runtime endpoint URLs returned by the hub. The console requires a concrete bind handle instead of relying on temporary server-generated handles.
+- Existing bearer-token reconnect flow
+  When a dispatcher already has an agent bearer token, onboarding can verify that token via `GET /v1/agents/me/capabilities` without requiring a new bind token.
 - `PATCH /v1/agents/me/metadata`
   Registers the agent profile, the fixed dispatcher harness ID (`moltenhub-dispatch`), and two advertised skills:
   - `dispatch_skill_request`
@@ -56,7 +58,9 @@ If a connected agent is marked as a failure reviewer, the first such agent is se
 The bundled UI provides:
 
 - A single first-run onboarding modal that captures NA/EU runtime selection plus bind/profile inputs in one submit flow
+- Onboarding accepts either a one-time bind token or an existing bearer token for reconnecting an already-bound agent
 - A staged onboarding flow (`bind` -> `work_bind` -> `profile_set` -> `work_activate`) that mirrors hub setup behavior, keeps fields read-only while onboarding requests run, and surfaces stage-specific failures from the backend
+- Auth failures (for example `401 missing or invalid bearer token`) are normalized to a reconnect prompt so the UI re-opens onboarding instead of surfacing raw transport errors
 - Connected-agent management
 - Manual dispatch of skill requests
 - Automatic failure-reviewer selection from flagged connected agents

@@ -128,6 +128,19 @@ func (s *Service) setRuntimeEndpoints(endpoints hub.RuntimeEndpoints) {
 }
 
 func (s *Service) BindAndRegister(ctx context.Context, profile BindProfile) error {
+	profile.BindToken = strings.TrimSpace(profile.BindToken)
+	profile.AgentToken = strings.TrimSpace(profile.AgentToken)
+	switch {
+	case profile.AgentToken != "":
+		return s.connectWithExistingAgentToken(ctx, profile)
+	case profile.BindToken != "":
+		return s.bindAndRegisterWithBindToken(ctx, profile)
+	default:
+		return WrapOnboardingError(OnboardingStepBind, errors.New("either bind token or existing bearer token is required"))
+	}
+}
+
+func (s *Service) bindAndRegisterWithBindToken(ctx context.Context, profile BindProfile) error {
 	state := s.store.Snapshot()
 	runtime, err := ResolveHubRuntime(state.Settings.HubRegion, state.Settings.HubURL)
 	if err != nil {
@@ -144,7 +157,7 @@ func (s *Service) BindAndRegister(ctx context.Context, profile BindProfile) erro
 	s.setHubBaseURL(runtime.HubURL)
 	result, err := s.hub.BindAgent(ctx, hub.BindRequest{
 		HubURL:    runtime.HubURL,
-		BindToken: profile.BindToken,
+		BindToken: strings.TrimSpace(profile.BindToken),
 		Handle:    agentProfile.Handle,
 	})
 	if err != nil {
@@ -223,6 +236,112 @@ func (s *Service) BindAndRegister(ctx context.Context, profile BindProfile) erro
 	s.noteHubInteraction(nil, ConnectionTransportHTTP)
 
 	if err := s.logEvent("info", "Agent bound", fmt.Sprintf("Bound handle %q against %s", result.Handle, result.APIBase), "", ""); err != nil {
+		return WrapOnboardingError(OnboardingStepWorkActivate, err)
+	}
+	return nil
+}
+
+func (s *Service) connectWithExistingAgentToken(ctx context.Context, profile BindProfile) error {
+	state := s.store.Snapshot()
+	runtime, err := ResolveHubRuntime(state.Settings.HubRegion, state.Settings.HubURL)
+	if err != nil {
+		return WrapOnboardingError(OnboardingStepBind, err)
+	}
+
+	agentToken := strings.TrimSpace(profile.AgentToken)
+	if agentToken == "" {
+		return WrapOnboardingError(OnboardingStepBind, errors.New("existing bearer token is required"))
+	}
+
+	apiBase := coalesceTrimmed(runtimeAPIBaseFromSession(state.Session), defaultAPIBaseForHub(runtime.HubURL))
+	s.setHubBaseURL(apiBase)
+	s.setRuntimeEndpoints(runtimeEndpointsFromSession(state.Session))
+
+	if _, err := s.hub.GetCapabilities(ctx, agentToken); err != nil {
+		s.noteHubInteraction(err, ConnectionTransportHTTP)
+		return WrapOnboardingError(OnboardingStepWorkBind, fmt.Errorf("existing agent credential verification failed: %w", err))
+	}
+	s.noteHubInteraction(nil, ConnectionTransportHTTP)
+
+	agentProfile := normalizeAgentProfile(AgentProfile{
+		Handle:          profile.Handle,
+		DisplayName:     profile.DisplayName,
+		Emoji:           profile.Emoji,
+		ProfileMarkdown: profile.ProfileMarkdown,
+	})
+	if err := s.store.Update(func(current *AppState) error {
+		current.Settings.HubRegion = runtime.ID
+		current.Settings.HubURL = runtime.HubURL
+		current.Session.BoundAt = time.Now().UTC()
+		current.Session.HubURL = runtime.HubURL
+		current.Session.APIBase = coalesceTrimmed(apiBase, current.Session.APIBase, defaultAPIBaseForHub(runtime.HubURL))
+		current.Session.BaseURL = current.Session.APIBase
+		current.Session.AgentToken = agentToken
+		current.Session.BindToken = agentToken
+		if agentProfile.Handle != "" {
+			current.Session.Handle = agentProfile.Handle
+			current.Session.HandleFinalized = true
+		}
+		if agentProfile.DisplayName != "" {
+			current.Session.DisplayName = agentProfile.DisplayName
+		}
+		if agentProfile.Emoji != "" {
+			current.Session.Emoji = agentProfile.Emoji
+		}
+		if agentProfile.ProfileMarkdown != "" {
+			current.Session.ProfileBio = agentProfile.ProfileMarkdown
+		}
+		current.Session.OfflineMarked = false
+		connectionBaseURL, connectionDomain := hubConnectionTarget(current.Session.APIBase, runtime.HubURL)
+		current.Connection = ConnectionState{
+			Status:        ConnectionStatusConnected,
+			Transport:     ConnectionTransportConnected,
+			LastChangedAt: time.Now().UTC(),
+			BaseURL:       connectionBaseURL,
+			Domain:        connectionDomain,
+		}
+		return nil
+	}); err != nil {
+		return WrapOnboardingError(OnboardingStepBind, err)
+	}
+
+	updatedState := s.store.Snapshot()
+	s.settings = updatedState.Settings
+	s.syncHubClient(updatedState)
+
+	if profileIncludesRegistrationData(agentProfile) {
+		if err := s.updateAgentProfile(ctx, agentToken, agentProfile); err != nil {
+			s.noteHubInteraction(err, ConnectionTransportHTTP)
+			return WrapOnboardingError(OnboardingStepProfileSet, fmt.Errorf("existing agent credential verified, but profile registration failed: %w", err))
+		}
+		s.noteHubInteraction(nil, ConnectionTransportHTTP)
+		if err := s.store.Update(func(current *AppState) error {
+			if agentProfile.Handle != "" {
+				current.Session.Handle = agentProfile.Handle
+				current.Session.HandleFinalized = true
+			}
+			if agentProfile.DisplayName != "" {
+				current.Session.DisplayName = agentProfile.DisplayName
+			}
+			if agentProfile.Emoji != "" {
+				current.Session.Emoji = agentProfile.Emoji
+			}
+			if agentProfile.ProfileMarkdown != "" {
+				current.Session.ProfileBio = agentProfile.ProfileMarkdown
+			}
+			return nil
+		}); err != nil {
+			return WrapOnboardingError(OnboardingStepProfileSet, err)
+		}
+	}
+
+	if _, err := s.hub.GetCapabilities(ctx, agentToken); err != nil {
+		s.noteHubInteraction(err, ConnectionTransportHTTP)
+		return WrapOnboardingError(OnboardingStepWorkActivate, fmt.Errorf("existing agent credential verified, but activation check failed: %w", err))
+	}
+	s.noteHubInteraction(nil, ConnectionTransportHTTP)
+
+	if err := s.logEvent("info", "Agent connected", fmt.Sprintf("Verified existing credential against %s", updatedState.Session.APIBase), "", ""); err != nil {
 		return WrapOnboardingError(OnboardingStepWorkActivate, err)
 	}
 	return nil
@@ -1044,6 +1163,13 @@ func failureFromError(message string, err error) failureReport {
 		report.Retryable = apiErr.Retryable
 		report.NextAction = strings.TrimSpace(apiErr.NextAction)
 	}
+	if IsHubAuthFailure(err) {
+		report.Message = "Task failed because dispatcher authentication to Molten Hub is missing or invalid."
+		report.Retryable = false
+		if report.NextAction == "" {
+			report.NextAction = "provide_valid_bearer_token_or_bind_token"
+		}
+	}
 	return report
 }
 
@@ -1279,6 +1405,13 @@ func normalizeAgentProfile(profile AgentProfile) AgentProfile {
 	return profile
 }
 
+func profileIncludesRegistrationData(profile AgentProfile) bool {
+	return strings.TrimSpace(profile.Handle) != "" ||
+		strings.TrimSpace(profile.DisplayName) != "" ||
+		strings.TrimSpace(profile.Emoji) != "" ||
+		strings.TrimSpace(profile.ProfileMarkdown) != ""
+}
+
 func buildAgentMetadata(profile AgentProfile, sessionKey string) map[string]any {
 	metadata := map[string]any{
 		"agent_type":       "dispatch",
@@ -1432,6 +1565,25 @@ func (s *Service) noteHubInteraction(err error, transport string) {
 		transport = ConnectionTransportHTTP
 	}
 	now := time.Now().UTC()
+	if IsHubAuthFailure(err) {
+		_ = s.store.Update(func(state *AppState) error {
+			baseURL, domain := hubConnectionTarget(state.Session.APIBase, state.Settings.HubURL)
+			state.Session.AgentToken = ""
+			state.Session.BindToken = ""
+			state.Session.OfflineMarked = false
+			state.Connection = ConnectionState{
+				Status:        ConnectionStatusDisconnected,
+				Transport:     ConnectionTransportAuth,
+				LastChangedAt: now,
+				Error:         strings.TrimSpace(HubAuthReconnectMessage()),
+				Detail:        strings.TrimSpace(HubAuthReconnectMessage()),
+				BaseURL:       baseURL,
+				Domain:        domain,
+			}
+			return nil
+		})
+		return
+	}
 	if !hubReachable(err) {
 		_ = s.store.Update(func(state *AppState) error {
 			baseURL, domain := hubConnectionTarget(state.Session.APIBase, state.Settings.HubURL)
@@ -1502,6 +1654,9 @@ func (s *Service) pollInterval() time.Duration {
 func hubReachable(err error) bool {
 	if err == nil {
 		return true
+	}
+	if IsHubAuthFailure(err) {
+		return false
 	}
 	var apiErr *hub.APIError
 	return errors.As(err, &apiErr)

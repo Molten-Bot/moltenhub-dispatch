@@ -148,12 +148,13 @@ func (s *Server) handleBind(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := s.service.BindAndRegister(r.Context(), app.BindProfile{
 		BindToken:       strings.TrimSpace(r.FormValue("bind_token")),
+		AgentToken:      strings.TrimSpace(r.FormValue("agent_token")),
 		Handle:          form.Handle,
 		DisplayName:     form.DisplayName,
 		Emoji:           form.Emoji,
 		ProfileMarkdown: form.ProfileMarkdown,
 	}); err != nil {
-		s.redirectWithMessage(w, r, "error", err.Error())
+		s.redirectWithMessage(w, r, "error", userFacingError(err))
 		return
 	}
 	s.redirectWithMessage(w, r, "info", "Agent bound and profile registered.")
@@ -175,7 +176,7 @@ func (s *Server) handleProfile(w http.ResponseWriter, r *http.Request) {
 		Emoji:           form.Emoji,
 		ProfileMarkdown: form.ProfileMarkdown,
 	}); err != nil {
-		s.redirectWithMessage(w, r, "error", err.Error())
+		s.redirectWithMessage(w, r, "error", userFacingError(err))
 		return
 	}
 	s.redirectWithMessage(w, r, "info", "Agent profile updated.")
@@ -199,6 +200,7 @@ func (s *Server) handleOnboarding(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
 		HubRegion       string `json:"hub_region"`
 		BindToken       string `json:"bind_token"`
+		AgentToken      string `json:"agent_token"`
 		Handle          string `json:"handle"`
 		DisplayName     string `json:"display_name"`
 		Emoji           string `json:"emoji"`
@@ -228,6 +230,7 @@ func (s *Server) handleOnboarding(w http.ResponseWriter, r *http.Request) {
 
 	err := s.service.BindAndRegister(r.Context(), app.BindProfile{
 		BindToken:       strings.TrimSpace(payload.BindToken),
+		AgentToken:      strings.TrimSpace(payload.AgentToken),
 		Handle:          strings.TrimSpace(payload.Handle),
 		DisplayName:     strings.TrimSpace(payload.DisplayName),
 		Emoji:           strings.TrimSpace(payload.Emoji),
@@ -238,7 +241,7 @@ func (s *Server) handleOnboarding(w http.ResponseWriter, r *http.Request) {
 		onboarding := onboardingViewFromError(state, err)
 		writeJSON(w, http.StatusBadRequest, map[string]any{
 			"ok":         false,
-			"error":      err.Error(),
+			"error":      userFacingError(err),
 			"onboarding": onboarding,
 			"bound":      strings.TrimSpace(state.Session.AgentToken) != "",
 		})
@@ -246,9 +249,13 @@ func (s *Server) handleOnboarding(w http.ResponseWriter, r *http.Request) {
 	}
 
 	onboarding := completedOnboardingView(state)
+	successMessage := "Agent bound and profile registered."
+	if strings.TrimSpace(payload.AgentToken) != "" {
+		successMessage = "Existing agent credential verified and dispatcher connected."
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok":         true,
-		"message":    "Agent bound and profile registered.",
+		"message":    successMessage,
 		"onboarding": onboarding,
 		"bound":      true,
 	})
@@ -328,7 +335,7 @@ func (s *Server) handleDispatch(w http.ResponseWriter, r *http.Request) {
 		Timeout:        timeout,
 	})
 	if err != nil {
-		s.redirectWithMessage(w, r, "error", err.Error())
+		s.redirectWithMessage(w, r, "error", userFacingError(err))
 		return
 	}
 	s.redirectWithMessage(w, r, "info", "Dispatched task "+task.ID)
@@ -459,6 +466,7 @@ type onboardingStepView struct {
 }
 type agentProfileForm struct {
 	BindToken       string
+	AgentToken      string
 	Handle          string
 	DisplayName     string
 	Emoji           string
@@ -468,6 +476,7 @@ type agentProfileForm struct {
 func profileFormFromRequest(r *http.Request) agentProfileForm {
 	return agentProfileForm{
 		BindToken:       strings.TrimSpace(r.FormValue("bind_token")),
+		AgentToken:      strings.TrimSpace(r.FormValue("agent_token")),
 		Handle:          strings.TrimSpace(r.FormValue("handle")),
 		DisplayName:     strings.TrimSpace(r.FormValue("display_name")),
 		Emoji:           strings.TrimSpace(r.FormValue("emoji")),
@@ -550,6 +559,9 @@ func connectionStatusView(appState app.AppState) connectionView {
 	case transport == app.ConnectionTransportHTTPLong || transport == app.ConnectionTransportHTTP:
 		view.Label = "HTTP Connected"
 		view.Description = fmt.Sprintf("Connected via HTTP long polling to %s", fallbackTarget(target))
+	case transport == app.ConnectionTransportAuth:
+		view.Label = "Authentication Required"
+		view.Description = firstNonEmpty(detail, app.HubAuthReconnectMessage())
 	case status == app.ConnectionStatusConnected:
 		view.Label = "Connected"
 		view.Description = fmt.Sprintf("Connected to %s (transport pending)", fallbackTarget(target))
@@ -600,6 +612,12 @@ func subActionState(state app.AppState) subActionView {
 		}
 	}
 	if state.Connection.Status != app.ConnectionStatusConnected {
+		if state.Connection.Transport == app.ConnectionTransportAuth {
+			return subActionView{
+				Visible: false,
+				Reason:  "Sub-actions stay hidden until a valid Molten Hub bearer token or bind token is provided.",
+			}
+		}
 		return subActionView{
 			Visible: false,
 			Reason:  "Sub-actions stay hidden while the Hub connection is offline or unavailable.",
@@ -645,13 +663,14 @@ func completedOnboardingView(state app.AppState) onboardingView {
 
 func onboardingViewFromError(_ app.AppState, err error) onboardingView {
 	stage := app.OnboardingStageFromError(err)
+	message := userFacingError(err)
 	steps := defaultOnboardingSteps(app.OnboardingModeNew)
-	setOnboardingProgress(steps, stage, "error", err.Error())
+	setOnboardingProgress(steps, stage, "error", message)
 	return onboardingView{
 		Steps:   steps,
 		Stage:   stage,
 		Active:  false,
-		Message: err.Error(),
+		Message: message,
 	}
 }
 
@@ -710,4 +729,14 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(payload)
+}
+
+func userFacingError(err error) string {
+	if err == nil {
+		return ""
+	}
+	if app.IsHubAuthFailure(err) {
+		return app.HubAuthReconnectMessage()
+	}
+	return err.Error()
 }

@@ -298,7 +298,9 @@
             {{end}}
           </div>
         </fieldset>
-        <label>Bind Token<input name="bind_token" value="{{.ProfileForm.BindToken}}" required autocomplete="off"></label>
+        <label>Bind Token (new agent)<input name="bind_token" value="{{.ProfileForm.BindToken}}" autocomplete="off"></label>
+        <label>Existing Bearer Token (already bound agent)<input name="agent_token" value="{{.ProfileForm.AgentToken}}" autocomplete="off"></label>
+        <p class="hint">Provide either a bind token or an existing bearer token.</p>
         <div class="profile-grid profile-grid-top">
           <label>Handle<input name="handle" value="{{.ProfileForm.Handle}}" placeholder="codex-beast"></label>
           <label>Display Name<input name="display_name" value="{{.ProfileForm.DisplayName}}" placeholder="Jef's Codex"></label>
@@ -865,11 +867,27 @@
         bindForm.addEventListener("submit", async (event) => {
           event.preventDefault();
           const formData = new FormData(bindForm);
+          const bindTokenValue = String(formData.get("bind_token") || "").trim();
+          const agentTokenValue = String(formData.get("agent_token") || "").trim();
+          const onboardingMode = agentTokenValue ? "existing" : "new";
+          const onboardingSeed = onboardingDefaults(onboardingMode);
+          if (!bindTokenValue && !agentTokenValue) {
+            const message = "Provide a bind token or an existing bearer token.";
+            renderOnboarding({
+              stage: "bind",
+              active: false,
+              message,
+              steps: onboardingSeed.map((step) => step.id === "bind" ? { ...step, status: "error", detail: message } : step),
+            });
+            return;
+          }
           renderOnboarding({
             stage: "bind",
             active: true,
-            message: "Exchanging bind token for an agent credential.",
-            steps: onboardingDefaults().map((step) => step.id === "bind" ? { ...step, status: "current" } : step),
+            message: agentTokenValue
+              ? "Verifying existing bearer token credential."
+              : "Exchanging bind token for an agent credential.",
+            steps: onboardingSeed.map((step) => step.id === "bind" ? { ...step, status: "current" } : step),
           });
           setBindBusy(true);
           let redirected = false;
@@ -882,7 +900,8 @@
               },
               body: JSON.stringify({
                 hub_region: String(formData.get("hub_region") || "").trim(),
-                bind_token: String(formData.get("bind_token") || "").trim(),
+                bind_token: bindTokenValue,
+                agent_token: agentTokenValue,
                 handle: String(formData.get("handle") || "").trim(),
                 display_name: String(formData.get("display_name") || "").trim(),
                 emoji: String(formData.get("emoji") || "").trim(),
@@ -904,7 +923,7 @@
                   stage: "bind",
                   active: false,
                   message,
-                  steps: onboardingDefaults().map((step) => step.id === "bind" ? { ...step, status: "error", detail: message } : step),
+                  steps: onboardingSeed.map((step) => step.id === "bind" ? { ...step, status: "error", detail: message } : step),
                 });
               }
               if (body && body.bound) {
@@ -924,7 +943,7 @@
               stage: "bind",
               active: false,
               message,
-              steps: onboardingDefaults().map((step) => step.id === "bind" ? { ...step, status: "error", detail: message } : step),
+              steps: onboardingSeed.map((step) => step.id === "bind" ? { ...step, status: "error", detail: message } : step),
             });
           } finally {
             if (!redirected) {
@@ -945,8 +964,11 @@
         subActions.hidden = !connected;
         subActionsNotice.hidden = connected;
         if (!connected) {
+          const authRequired = state.transport === "auth_required";
           const reason = bound
-            ? "Sub-actions stay hidden while the Hub connection is offline or unavailable."
+            ? (authRequired
+              ? "Sub-actions stay hidden until a valid Molten Hub bearer token or bind token is provided."
+              : "Sub-actions stay hidden while the Hub connection is offline or unavailable.")
             : "Sub-actions stay hidden until this runtime is bound to Molten Hub and connectivity is working.";
           const empty = subActionsNotice.querySelector(".empty");
           if (empty instanceof HTMLElement) {
@@ -978,7 +1000,7 @@
           hubConnDot.classList.add("http");
           return;
         }
-        if (mode === "disconnected") {
+        if (mode === "disconnected" || mode === "auth_required") {
           hubConnDot.classList.add("disconnected");
         }
       };
@@ -1000,11 +1022,11 @@
         }
         const connected = mode === "ws" || mode === "http_long_poll" || mode === "connected";
         const online = connected;
-        const actionable = connected || mode === "disconnected";
-        const actionTone = connected ? "online" : (mode === "disconnected" ? "offline" : "");
-        const targetURL = connected || bound ? HUB_DASHBOARD_URL : HUB_LOGIN_URL;
+        const actionable = connected || mode === "disconnected" || mode === "auth_required";
+        const actionTone = connected ? "online" : ((mode === "disconnected" || mode === "auth_required") ? "offline" : "");
+        const targetURL = connected ? HUB_DASHBOARD_URL : HUB_LOGIN_URL;
         let messageText = String(text || "").trim();
-        if (mode === "disconnected" && !messageText) {
+        if ((mode === "disconnected" || mode === "auth_required") && !messageText) {
           messageText = bound
             ? "Configured locally. Restart runtime to connect."
             : "Connect to Molten Hub";
@@ -1020,6 +1042,7 @@
         });
       };
 
+      let authRedirected = false;
       const renderHubConnection = (state) => {
         if (!state || typeof state !== "object") {
           setHubConnection("disconnected", "Hub status unavailable");
@@ -1032,6 +1055,12 @@
         const baseURL = String(state.hub_base_url || "").trim();
         const detail = String(state.hub_detail || state.description || state.error || "").trim();
         const target = domain || baseURL || "hub";
+
+        if (transport === "auth_required" && bound && !authRedirected) {
+          authRedirected = true;
+          redirectWithMessage("error", detail || "Molten Hub authentication is missing or invalid. Enter an existing bearer token or a bind token to reconnect.");
+          return;
+        }
 
         if (transport === "ws") {
           setHubConnection("ws", `Connected via WebSocket to ${target}`);
@@ -1051,6 +1080,10 @@
         }
         if (transport === "retrying") {
           setHubConnection("retrying", detail || `Hub endpoint is waking up at ${target}. Retrying ping every 12s.`);
+          return;
+        }
+        if (transport === "auth_required") {
+          setHubConnection("auth_required", detail || "Molten Hub authentication is missing or invalid. Enter an existing bearer token or a bind token to reconnect.");
           return;
         }
         if (domain || baseURL) {

@@ -10,6 +10,7 @@ const (
 	ConnectionTransportHTTPLong  = "http_long_poll"
 	ConnectionTransportWebSocket = "ws"
 	ConnectionTransportOffline   = "offline"
+	ConnectionTransportAuth      = "auth_required"
 
 	ConnectionStatusDisconnected = "disconnected"
 	ConnectionStatusConnected    = "connected"
@@ -141,6 +142,7 @@ type AppState struct {
 
 type BindProfile struct {
 	BindToken       string
+	AgentToken      string
 	Handle          string
 	DisplayName     string
 	Emoji           string

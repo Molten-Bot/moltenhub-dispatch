@@ -338,6 +338,43 @@ func TestBindAndRegisterSupportsTemporaryHandleWhenHandleIsOmitted(t *testing.T)
 	}
 }
 
+func TestBindAndRegisterSupportsExistingBearerToken(t *testing.T) {
+	t.Parallel()
+
+	service, fake := newTestService(t)
+
+	err := service.BindAndRegister(context.Background(), BindProfile{
+		AgentToken:      "existing-agent-token",
+		DisplayName:     "Dispatch Agent",
+		Emoji:           "🤖",
+		ProfileMarkdown: "Reconnect using existing bearer token.",
+	})
+	if err != nil {
+		t.Fatalf("bind and register with existing token: %v", err)
+	}
+
+	if len(fake.bindRequests) != 0 {
+		t.Fatalf("did not expect bind endpoint call for existing bearer token flow, got %#v", fake.bindRequests)
+	}
+	if fake.capabilitiesCalls != 2 {
+		t.Fatalf("expected verification + activation checks, got %d", fake.capabilitiesCalls)
+	}
+	if len(fake.updateMetadataCalls) != 1 {
+		t.Fatalf("expected metadata update for supplied profile data, got %d", len(fake.updateMetadataCalls))
+	}
+
+	state := service.store.Snapshot()
+	if got, want := state.Session.AgentToken, "existing-agent-token"; got != want {
+		t.Fatalf("agent token = %q, want %q", got, want)
+	}
+	if got, want := state.Session.BindToken, "existing-agent-token"; got != want {
+		t.Fatalf("bind token alias = %q, want %q", got, want)
+	}
+	if got, want := state.Connection.Transport, ConnectionTransportHTTP; got != want {
+		t.Fatalf("connection transport = %q, want %q", got, want)
+	}
+}
+
 func TestBindAndRegisterUsesCanonicalAPIBaseForMetadata(t *testing.T) {
 	t.Parallel()
 
@@ -1476,6 +1513,26 @@ func TestFailureFromMessageUsesDownstreamFailureEnvelope(t *testing.T) {
 	}
 }
 
+func TestFailureFromErrorUsesHubAuthGuidance(t *testing.T) {
+	t.Parallel()
+
+	report := failureFromError("Task dispatch failed before it reached a connected agent.", &hub.APIError{
+		StatusCode: 401,
+		Code:       "unauthorized",
+		Message:    "missing or invalid bearer token",
+	})
+
+	if got := report.Message; got != "Task failed because dispatcher authentication to Molten Hub is missing or invalid." {
+		t.Fatalf("unexpected auth failure message: %q", got)
+	}
+	if report.Retryable {
+		t.Fatalf("expected non-retryable auth failure report: %#v", report)
+	}
+	if got := report.NextAction; got != "provide_valid_bearer_token_or_bind_token" {
+		t.Fatalf("unexpected auth failure next action: %q", got)
+	}
+}
+
 func TestNewServiceUsesPersistedAPIBaseForRuntimeCalls(t *testing.T) {
 	t.Parallel()
 
@@ -1594,6 +1651,44 @@ func TestPollOnceMarksDisconnectedWhenHubIsUnreachable(t *testing.T) {
 	}
 	if state.Connection.Error == "" {
 		t.Fatalf("expected connection error detail, got %#v", state.Connection)
+	}
+}
+
+func TestPollOnceClearsSessionWhenHubAuthFails(t *testing.T) {
+	t.Parallel()
+
+	service, fake := newTestService(t)
+	err := service.store.Update(func(state *AppState) error {
+		state.Session.AgentToken = "agent-token"
+		state.Session.BindToken = "agent-token"
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("seed store: %v", err)
+	}
+	fake.pullErr = &hub.APIError{
+		StatusCode: 401,
+		Code:       "unauthorized",
+		Message:    "missing or invalid bearer token",
+	}
+
+	err = service.PollOnce(context.Background())
+	if err == nil {
+		t.Fatal("expected auth failure")
+	}
+
+	state := service.store.Snapshot()
+	if state.Session.AgentToken != "" {
+		t.Fatalf("expected agent token to be cleared after auth failure, got %q", state.Session.AgentToken)
+	}
+	if state.Session.BindToken != "" {
+		t.Fatalf("expected bind token alias to be cleared after auth failure, got %q", state.Session.BindToken)
+	}
+	if state.Connection.Transport != ConnectionTransportAuth {
+		t.Fatalf("expected auth-required transport state, got %#v", state.Connection)
+	}
+	if state.Connection.Status != ConnectionStatusDisconnected {
+		t.Fatalf("expected disconnected status, got %#v", state.Connection)
 	}
 }
 
