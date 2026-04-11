@@ -6,7 +6,9 @@
 
 This app is aligned to the Molten Hub agent runtime APIs exposed by:
 
+- `na.hub.molten.bot.openapi.yaml`
 - `https://na.hub.molten.bot/openapi.yaml`
+- `eu.hub.molten.bot.openapi.yaml`
 - `https://eu.hub.molten.bot/openapi.yaml`
 
 Key integration points:
