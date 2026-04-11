@@ -201,6 +201,38 @@ func TestHandleOnboardingAPIReturnsSuccess(t *testing.T) {
 	}
 }
 
+func TestHandleIndexRendersAutoDismissingFlash(t *testing.T) {
+	t.Parallel()
+
+	server, err := New(&stubService{
+		state: app.AppState{
+			Settings: app.DefaultSettings(),
+		},
+	})
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/?level=info&message=Settings+updated.", nil)
+	rec := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 response, got %d", rec.Code)
+	}
+	if !strings.Contains(body, `class="flash flash-info" data-auto-dismiss-seconds="12"`) {
+		t.Fatalf("expected flash to advertise 12s auto-dismiss timeout, body=%s", body)
+	}
+	if !strings.Contains(body, `const flash = document.querySelector(".flash[data-auto-dismiss-seconds]");`) {
+		t.Fatalf("expected flash auto-dismiss client hook, body=%s", body)
+	}
+	if !strings.Contains(body, `window.setTimeout(() => {`) || !strings.Contains(body, `: 12000;`) {
+		t.Fatalf("expected flash fallback timeout to 12000ms, body=%s", body)
+	}
+}
+
 func TestHandleIndexShowsBoundProfileState(t *testing.T) {
 	t.Parallel()
 
