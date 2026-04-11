@@ -16,6 +16,8 @@ type fakeHubClient struct {
 	bindRequests        []hub.BindRequest
 	updateMetadataCalls []hub.UpdateMetadataRequest
 	updateMetadataErr   error
+	capabilitiesCalls   int
+	capabilitiesErr     error
 	publishCalls        []hub.PublishRequest
 	offlineCalls        []hub.OfflineRequest
 	baseURLCalls        []string
@@ -57,6 +59,10 @@ func (f *fakeHubClient) UpdateMetadata(_ context.Context, _ string, req hub.Upda
 }
 
 func (f *fakeHubClient) GetCapabilities(_ context.Context, _ string) (map[string]any, error) {
+	f.capabilitiesCalls++
+	if f.capabilitiesErr != nil {
+		return nil, f.capabilitiesErr
+	}
 	return map[string]any{"advertised_skills": []any{}}, nil
 }
 
@@ -167,6 +173,9 @@ func TestBindAndRegisterAdvertisesDispatchSkills(t *testing.T) {
 
 	if len(fake.updateMetadataCalls) != 1 {
 		t.Fatalf("expected metadata update, got %d", len(fake.updateMetadataCalls))
+	}
+	if fake.capabilitiesCalls != 1 {
+		t.Fatalf("expected one activation capabilities call, got %d", fake.capabilitiesCalls)
 	}
 	skills, ok := fake.updateMetadataCalls[0].Metadata["skills"].([]map[string]string)
 	if !ok {
@@ -396,6 +405,41 @@ func TestBindAndRegisterPersistsBoundSessionWhenMetadataUpdateFails(t *testing.T
 	}
 	if state.Session.DisplayName != "Dispatch Agent" {
 		t.Fatalf("expected display name to persist after bind success, got %q", state.Session.DisplayName)
+	}
+	if stage := OnboardingStageFromError(err); stage != OnboardingStepProfileSet {
+		t.Fatalf("expected profile_set stage, got %q", stage)
+	}
+}
+
+func TestBindAndRegisterReportsActivationFailureStage(t *testing.T) {
+	t.Parallel()
+
+	service, fake := newTestService(t)
+	fake.bindResponse = hub.BindResponse{
+		AgentToken: "agent-token",
+		AgentUUID:  "agent-uuid",
+		AgentURI:   "molten://dispatch/agent",
+		Handle:     "dispatch-agent",
+		APIBase:    "https://na.hub.molten.bot",
+	}
+	fake.capabilitiesErr = errors.New("capabilities unavailable")
+
+	err := service.BindAndRegister(context.Background(), BindProfile{
+		BindToken:       "bind-token",
+		Handle:          "dispatch-agent",
+		DisplayName:     "Dispatch Agent",
+		ProfileMarkdown: "Dispatches skill requests to connected agents.",
+	})
+	if err == nil {
+		t.Fatal("expected activation failure")
+	}
+	if stage := OnboardingStageFromError(err); stage != OnboardingStepWorkActivate {
+		t.Fatalf("expected work_activate stage, got %q", stage)
+	}
+
+	state := service.store.Snapshot()
+	if state.Session.AgentToken != "agent-token" {
+		t.Fatalf("expected token to persist after bind success, got %q", state.Session.AgentToken)
 	}
 }
 
@@ -806,9 +850,9 @@ func TestDispatchFromUIFailureQueuesFollowUpAndMarksOffline(t *testing.T) {
 				FailureReviewer: true,
 			},
 			{
-				ID:          "worker-a",
-				Name:        "Worker A",
-				AgentUUID:   "worker-uuid",
+				ID:           "worker-a",
+				Name:         "Worker A",
+				AgentUUID:    "worker-uuid",
 				DefaultSkill: "run_task",
 			},
 		}
