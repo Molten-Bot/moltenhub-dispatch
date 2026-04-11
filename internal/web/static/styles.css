@@ -3414,136 +3414,15 @@ html[data-hover-mode="off"] .prompt-visibility-toggle:hover {
   text-transform: uppercase;
 }
 
-.connection-indicator {
-  display: inline-flex;
-  align-items: center;
-  gap: 12px;
-  padding: 7px 12px;
-  min-height: 42px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
+.connection-status-row {
+  margin-left: auto;
+  flex-wrap: nowrap;
+}
+
+.connection-status-row .status-item-compact {
   background: var(--surface-glass);
-  box-shadow: var(--shadow-sm);
   backdrop-filter: blur(18px) saturate(130%);
   -webkit-backdrop-filter: blur(18px) saturate(130%);
-}
-
-.shell[data-bound="false"] .connection-indicator {
-  width: 14px;
-  min-width: 14px;
-  height: 14px;
-  min-height: 14px;
-  gap: 0;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-}
-
-.connection-text {
-  display: grid;
-  gap: 2px;
-}
-
-.shell[data-bound="false"] .connection-text {
-  display: none;
-}
-
-.connection-text strong {
-  display: block;
-  color: var(--text);
-  font-size: 0.8rem;
-  line-height: 1.2;
-}
-
-.connection-text small {
-  display: block;
-  color: var(--text-soft);
-  font-size: 0.72rem;
-  line-height: 1.25;
-}
-
-.connection-icon {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-}
-
-.shell[data-bound="false"] .connection-icon {
-  width: 14px;
-  height: 14px;
-}
-
-.connection-ring,
-.connection-core {
-  border-radius: 999px;
-}
-
-.connection-ring {
-  width: 20px;
-  height: 20px;
-  border: 1px solid color-mix(in srgb, var(--bad) 32%, transparent);
-  box-shadow: inset 0 0 12px color-mix(in srgb, var(--bad) 18%, transparent);
-}
-
-.connection-core {
-  position: absolute;
-  width: 9px;
-  height: 9px;
-  background: var(--bad);
-  box-shadow:
-    0 0 0 4px color-mix(in srgb, var(--bad) 16%, transparent),
-    0 0 10px color-mix(in srgb, var(--bad) 36%, transparent);
-}
-
-.shell[data-bound="false"] .connection-ring {
-  display: none;
-}
-
-.shell[data-bound="false"] .connection-core {
-  position: static;
-  width: 8px;
-  height: 8px;
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--bad) 16%, transparent);
-}
-
-.connection-connected.connection-transport-http .connection-ring {
-  border-color: color-mix(in srgb, var(--warn) 34%, transparent);
-  box-shadow: inset 0 0 12px color-mix(in srgb, var(--warn) 20%, transparent);
-}
-
-.connection-connected.connection-transport-http .connection-core {
-  background: var(--warn);
-  box-shadow:
-    0 0 0 4px color-mix(in srgb, var(--warn) 18%, transparent),
-    0 0 10px color-mix(in srgb, var(--warn) 38%, transparent);
-}
-
-.connection-connected.connection-transport-ws .connection-ring {
-  border-color: color-mix(in srgb, var(--good) 34%, transparent);
-  box-shadow: inset 0 0 12px color-mix(in srgb, var(--good) 20%, transparent);
-}
-
-.connection-connected.connection-transport-ws .connection-core {
-  background: var(--good);
-  box-shadow:
-    0 0 0 4px color-mix(in srgb, var(--good) 18%, transparent),
-    0 0 10px color-mix(in srgb, var(--good) 38%, transparent);
-}
-
-.connection-disconnected .connection-ring,
-.connection-transport-offline .connection-ring {
-  border-color: color-mix(in srgb, var(--bad) 34%, transparent);
-}
-
-.connection-disconnected .connection-core,
-.connection-transport-offline .connection-core {
-  background: var(--bad);
 }
 
 h1,
@@ -4000,13 +3879,8 @@ pre {
     align-items: stretch;
   }
 
-  .connection-indicator {
-    width: 100%;
-    justify-content: center;
-  }
-
-  .shell[data-bound="false"] .connection-indicator {
-    width: 14px;
+  .connection-status-row {
+    margin-left: 0;
     justify-content: flex-start;
   }
 
