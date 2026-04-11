@@ -102,17 +102,7 @@
                     <p class="hub-emoji-picker-label">Pick one emoji</p>
                     <button type="button" class="hub-emoji-picker-clear" data-hub-emoji-clear>Clear</button>
                   </div>
-                  <div class="hub-emoji-picker-search-wrap">
-                    <span class="hub-emoji-picker-search-icon" aria-hidden="true">⌕</span>
-                    <input
-                      type="search"
-                      class="hub-emoji-picker-search"
-                      placeholder="Search emoji"
-                      data-hub-emoji-search
-                      aria-label="Search emoji"
-                    >
-                  </div>
-                  <div class="hub-emoji-picker-results" data-hub-emoji-results></div>
+                  <div class="hub-emoji-picker-mart" data-hub-emoji-mart-root aria-live="polite"></div>
                 </div>
               </div>
             </fieldset>
@@ -157,17 +147,7 @@
                     <p class="hub-emoji-picker-label">Pick one emoji</p>
                     <button type="button" class="hub-emoji-picker-clear" data-hub-emoji-clear>Clear</button>
                   </div>
-                  <div class="hub-emoji-picker-search-wrap">
-                    <span class="hub-emoji-picker-search-icon" aria-hidden="true">⌕</span>
-                    <input
-                      type="search"
-                      class="hub-emoji-picker-search"
-                      placeholder="Search emoji"
-                      data-hub-emoji-search
-                      aria-label="Search emoji"
-                    >
-                  </div>
-                  <div class="hub-emoji-picker-results" data-hub-emoji-results></div>
+                  <div class="hub-emoji-picker-mart" data-hub-emoji-mart-root aria-live="polite"></div>
                 </div>
               </div>
             </fieldset>
@@ -353,123 +333,43 @@
         });
       }
 
-      const normalizeSearchText = (value) => String(value || "").trim().toLowerCase();
       const VIEWPORT_GUTTER = 8;
       const PANEL_OFFSET = 8;
       const PANEL_MAX_WIDTH = 360;
       const PANEL_ESTIMATED_HEIGHT = 430;
       const DEFAULT_EMOJI = "🙂";
+      const EMOJI_MART_REACT_MODULE = "https://esm.sh/@emoji-mart/react@1.1.1?bundle";
+      const EMOJI_MART_DATA_MODULE = "https://esm.sh/@emoji-mart/data@1.2.1";
+      const REACT_MODULE = "https://esm.sh/react@18.2.0?bundle";
+      const REACT_DOM_CLIENT_MODULE = "https://esm.sh/react-dom@18.2.0/client?bundle";
 
-      const emojiCatalog = [
-        {
-          id: "frequent",
-          label: "Frequent",
-          entries: [
-            { emoji: "🤖", label: "Robot", keywords: ["bot", "agent", "dispatch", "assistant"] },
-            { emoji: "💯", label: "Hundred", keywords: ["100", "done", "ship"] },
-            { emoji: "🚀", label: "Rocket", keywords: ["launch", "deploy", "ship"] },
-            { emoji: "🧠", label: "Brain", keywords: ["think", "intelligence"] },
-            { emoji: "⚙️", label: "Gear", keywords: ["settings", "config"] },
-            { emoji: "🛠️", label: "Tools", keywords: ["fix", "build", "repair"] },
-            { emoji: "🔥", label: "Fire", keywords: ["hot", "priority"] },
-            { emoji: "✅", label: "Check", keywords: ["success", "pass"] },
-          ],
-        },
-        {
-          id: "smileys",
-          label: "Smileys",
-          entries: [
-            { emoji: "😀", label: "Grinning face", keywords: ["happy", "smile"] },
-            { emoji: "😄", label: "Grinning face with eyes", keywords: ["happy", "joy"] },
-            { emoji: "😁", label: "Beaming face", keywords: ["smile"] },
-            { emoji: "😎", label: "Smiling face with sunglasses", keywords: ["cool"] },
-            { emoji: "🤩", label: "Star struck", keywords: ["excited"] },
-            { emoji: "🥳", label: "Partying face", keywords: ["celebrate"] },
-            { emoji: "🤔", label: "Thinking face", keywords: ["hmm", "question"] },
-            { emoji: "🙌", label: "Raising hands", keywords: ["celebrate", "yay"] },
-            { emoji: "👏", label: "Clapping hands", keywords: ["applause"] },
-            { emoji: "🙏", label: "Folded hands", keywords: ["thanks"] },
-            { emoji: "💪", label: "Flexed biceps", keywords: ["strong"] },
-            { emoji: "👀", label: "Eyes", keywords: ["watching", "review"] },
-          ],
-        },
-        {
-          id: "animals",
-          label: "Animals",
-          entries: [
-            { emoji: "🐶", label: "Dog face", keywords: ["pet"] },
-            { emoji: "🐱", label: "Cat face", keywords: ["pet"] },
-            { emoji: "🦊", label: "Fox", keywords: [] },
-            { emoji: "🐼", label: "Panda", keywords: [] },
-            { emoji: "🦁", label: "Lion", keywords: [] },
-            { emoji: "🐧", label: "Penguin", keywords: [] },
-            { emoji: "🦄", label: "Unicorn", keywords: [] },
-            { emoji: "🐙", label: "Octopus", keywords: [] },
-          ],
-        },
-        {
-          id: "food",
-          label: "Food",
-          entries: [
-            { emoji: "☕", label: "Hot beverage", keywords: ["coffee"] },
-            { emoji: "🍵", label: "Tea", keywords: [] },
-            { emoji: "🍕", label: "Pizza", keywords: [] },
-            { emoji: "🍜", label: "Steaming bowl", keywords: ["ramen"] },
-            { emoji: "🍣", label: "Sushi", keywords: [] },
-            { emoji: "🍪", label: "Cookie", keywords: [] },
-            { emoji: "🍎", label: "Red apple", keywords: [] },
-            { emoji: "🥑", label: "Avocado", keywords: [] },
-          ],
-        },
-        {
-          id: "travel",
-          label: "Travel",
-          entries: [
-            { emoji: "✈️", label: "Airplane", keywords: ["flight"] },
-            { emoji: "🚗", label: "Car", keywords: ["drive"] },
-            { emoji: "🚂", label: "Train", keywords: [] },
-            { emoji: "🛸", label: "Flying saucer", keywords: ["ufo"] },
-            { emoji: "🛰️", label: "Satellite", keywords: ["space"] },
-            { emoji: "🗺️", label: "World map", keywords: ["globe"] },
-            { emoji: "🌍", label: "Globe europe africa", keywords: ["world"] },
-            { emoji: "🧭", label: "Compass", keywords: ["direction"] },
-          ],
-        },
-        {
-          id: "objects",
-          label: "Objects",
-          entries: [
-            { emoji: "💡", label: "Light bulb", keywords: ["idea"] },
-            { emoji: "📌", label: "Pushpin", keywords: ["pin"] },
-            { emoji: "📎", label: "Paperclip", keywords: ["attach"] },
-            { emoji: "📚", label: "Books", keywords: ["docs"] },
-            { emoji: "📝", label: "Memo", keywords: ["notes"] },
-            { emoji: "🔐", label: "Locked", keywords: ["security"] },
-            { emoji: "🔎", label: "Magnifying glass", keywords: ["search"] },
-            { emoji: "🧪", label: "Test tube", keywords: ["test"] },
-          ],
-        },
-        {
-          id: "symbols",
-          label: "Symbols",
-          entries: [
-            { emoji: "✅", label: "Check mark button", keywords: ["ok", "pass"] },
-            { emoji: "❌", label: "Cross mark", keywords: ["fail", "error"] },
-            { emoji: "⚠️", label: "Warning", keywords: ["alert"] },
-            { emoji: "❗", label: "Exclamation mark", keywords: ["important"] },
-            { emoji: "❓", label: "Question mark", keywords: ["question"] },
-            { emoji: "➡️", label: "Right arrow", keywords: ["next"] },
-            { emoji: "🟢", label: "Green circle", keywords: ["online"] },
-            { emoji: "🔴", label: "Red circle", keywords: ["offline"] },
-          ],
-        },
-      ].map((category) => ({
-        ...category,
-        entries: category.entries.map((entry) => ({
-          ...entry,
-          searchText: normalizeSearchText([entry.label].concat(entry.keywords || []).join(" ")),
-        })),
-      }));
+      let emojiMartModulesPromise = null;
+      const loadEmojiMartModules = async () => {
+        if (!emojiMartModulesPromise) {
+          emojiMartModulesPromise = Promise.all([
+            import(REACT_MODULE),
+            import(REACT_DOM_CLIENT_MODULE),
+            import(EMOJI_MART_REACT_MODULE),
+            import(EMOJI_MART_DATA_MODULE),
+          ]).then(([reactModule, reactDomClientModule, pickerModule, dataModule]) => {
+            const React = reactModule.default || reactModule;
+            const createRoot = reactDomClientModule.createRoot;
+            const Picker = pickerModule.default || pickerModule.Picker || pickerModule;
+            const emojiMartData = dataModule.default || dataModule;
+            if (typeof createRoot !== "function") {
+              throw new Error("react-dom createRoot is unavailable");
+            }
+            if (typeof Picker !== "function") {
+              throw new Error("@emoji-mart/react picker module is unavailable");
+            }
+            if (!emojiMartData || typeof emojiMartData !== "object") {
+              throw new Error("@emoji-mart/data module is unavailable");
+            }
+            return { React, createRoot, Picker, emojiMartData };
+          });
+        }
+        return emojiMartModulesPromise;
+      };
 
       const graphemeSegmenter = typeof Intl !== "undefined" && typeof Intl.Segmenter === "function"
         ? new Intl.Segmenter(undefined, { granularity: "grapheme" })
@@ -500,8 +400,7 @@
         const selectedText = root.querySelector("[data-hub-emoji-selected-text]");
         const panel = root.querySelector("[data-hub-emoji-panel]");
         const clearButton = root.querySelector("[data-hub-emoji-clear]");
-        const searchInput = root.querySelector("[data-hub-emoji-search]");
-        const results = root.querySelector("[data-hub-emoji-results]");
+        const pickerMount = root.querySelector("[data-hub-emoji-mart-root]");
         if (
           !(input instanceof HTMLInputElement) ||
           !(toggle instanceof HTMLButtonElement) ||
@@ -509,14 +408,23 @@
           !(selectedText instanceof HTMLElement) ||
           !(panel instanceof HTMLElement) ||
           !(clearButton instanceof HTMLButtonElement) ||
-          !(searchInput instanceof HTMLInputElement) ||
-          !(results instanceof HTMLElement)
+          !(pickerMount instanceof HTMLElement)
         ) {
           return;
         }
 
         let open = false;
-        let searchQuery = "";
+        let pickerRoot = null;
+        let pickerMounted = false;
+        let pickerLoading = false;
+
+        const renderPickerMessage = (message) => {
+          pickerMount.innerHTML = "";
+          const node = document.createElement("p");
+          node.className = "hub-emoji-picker-empty";
+          node.textContent = message;
+          pickerMount.appendChild(node);
+        };
 
         const syncSelectedState = () => {
           const emojiValue = firstEmojiGrapheme(input.value);
@@ -526,59 +434,9 @@
           const previewEmoji = emojiValue || DEFAULT_EMOJI;
           preview.textContent = previewEmoji;
           selectedText.textContent = emojiValue ? `Selected: ${emojiValue}` : "Choose an emoji";
+          selectedText.classList.toggle("is-selected", emojiValue !== "");
           toggle.setAttribute("aria-label", emojiValue ? `Selected emoji: ${emojiValue}` : "Choose an emoji");
           clearButton.disabled = emojiValue === "";
-        };
-
-        const renderResults = () => {
-          const selectedEmoji = firstEmojiGrapheme(input.value);
-          const visibleCategories = emojiCatalog
-            .map((category) => ({
-              ...category,
-              entries: category.entries.filter((entry) => {
-                if (!searchQuery) {
-                  return true;
-                }
-                return entry.searchText.includes(searchQuery) || entry.emoji.includes(searchQuery);
-              }),
-            }))
-            .filter((category) => category.entries.length > 0);
-
-          results.innerHTML = "";
-          if (!visibleCategories.length) {
-            const empty = document.createElement("p");
-            empty.className = "hub-emoji-picker-empty";
-            empty.textContent = "No emoji match your search.";
-            results.appendChild(empty);
-            return;
-          }
-
-          visibleCategories.forEach((category) => {
-            const group = document.createElement("section");
-            group.className = "hub-emoji-picker-group";
-
-            const label = document.createElement("p");
-            label.className = "hub-emoji-picker-group-label";
-            label.textContent = category.label;
-            group.appendChild(label);
-
-            const grid = document.createElement("div");
-            grid.className = "hub-emoji-picker-grid";
-            category.entries.forEach((entry) => {
-              const button = document.createElement("button");
-              button.type = "button";
-              button.className = "hub-emoji-picker-option";
-              button.setAttribute("data-emoji-value", entry.emoji);
-              button.setAttribute("aria-label", entry.label);
-              button.textContent = entry.emoji;
-              if (selectedEmoji && selectedEmoji === entry.emoji) {
-                button.classList.add("active");
-              }
-              grid.appendChild(button);
-            });
-            group.appendChild(grid);
-            results.appendChild(group);
-          });
         };
 
         const positionPanel = () => {
@@ -616,6 +474,16 @@
           window.removeEventListener("scroll", positionPanel, true);
         };
 
+        const unmountPicker = () => {
+          if (pickerRoot && pickerMounted) {
+            pickerRoot.render(null);
+          }
+          pickerMounted = false;
+          pickerLoading = false;
+          pickerMount.classList.remove("is-loading");
+          pickerMount.innerHTML = "";
+        };
+
         const closePanel = () => {
           if (!open) {
             return;
@@ -625,8 +493,56 @@
           toggle.classList.remove("is-open");
           toggle.setAttribute("aria-expanded", "false");
           detachPanelListeners();
+          unmountPicker();
           if (closeActiveEmojiPicker === closePanel) {
             closeActiveEmojiPicker = null;
+          }
+        };
+
+        const mountPicker = async () => {
+          if (pickerLoading || pickerMounted || !open) {
+            return;
+          }
+          pickerLoading = true;
+          pickerMount.classList.add("is-loading");
+          renderPickerMessage("Loading emoji picker...");
+          try {
+            const { React, createRoot, Picker, emojiMartData } = await loadEmojiMartModules();
+            if (!open) {
+              return;
+            }
+            pickerMount.innerHTML = "";
+            if (!pickerRoot) {
+              pickerRoot = createRoot(pickerMount);
+            }
+            pickerRoot.render(
+              React.createElement(Picker, {
+                data: emojiMartData,
+                onEmojiSelect: (emoji) => {
+                  const nextEmoji = emoji && typeof emoji.native === "string" ? emoji.native : "";
+                  if (!nextEmoji) {
+                    return;
+                  }
+                  setEmojiValue(nextEmoji, true);
+                },
+                previewPosition: "none",
+                skinTonePosition: "none",
+                searchPosition: "sticky",
+                maxFrequentRows: 2,
+                theme: document.documentElement.classList.contains("dark") ? "dark" : "light",
+              }),
+            );
+            pickerMounted = true;
+            window.requestAnimationFrame(positionPanel);
+          } catch (error) {
+            if (!open) {
+              return;
+            }
+            const message = error instanceof Error ? error.message : "Unknown error";
+            renderPickerMessage(`Emoji picker failed to load: ${message}`);
+          } finally {
+            pickerLoading = false;
+            pickerMount.classList.remove("is-loading");
           }
         };
 
@@ -639,9 +555,6 @@
           }
           closeActiveEmojiPicker = closePanel;
           open = true;
-          searchQuery = "";
-          searchInput.value = "";
-          renderResults();
           panel.hidden = false;
           toggle.classList.add("is-open");
           toggle.setAttribute("aria-expanded", "true");
@@ -651,13 +564,12 @@
           window.addEventListener("keydown", handleWindowKeydown);
           window.addEventListener("resize", positionPanel);
           window.addEventListener("scroll", positionPanel, true);
-          searchInput.focus({ preventScroll: true });
+          void mountPicker();
         };
 
         const setEmojiValue = (nextValue, closeWhenDone = false) => {
           input.value = firstEmojiGrapheme(nextValue);
           syncSelectedState();
-          renderResults();
           if (closeWhenDone) {
             closePanel();
             toggle.focus({ preventScroll: true });
@@ -695,28 +607,6 @@
 
         clearButton.addEventListener("click", () => {
           setEmojiValue("", true);
-        });
-
-        searchInput.addEventListener("input", () => {
-          searchQuery = normalizeSearchText(searchInput.value);
-          renderResults();
-          positionPanel();
-        });
-
-        results.addEventListener("click", (event) => {
-          const target = event.target;
-          if (!(target instanceof Element)) {
-            return;
-          }
-          const button = target.closest("button[data-emoji-value]");
-          if (!(button instanceof HTMLButtonElement)) {
-            return;
-          }
-          const value = String(button.getAttribute("data-emoji-value") || "");
-          if (!value) {
-            return;
-          }
-          setEmojiValue(value, true);
         });
 
         setEmojiValue(input.value);
