@@ -39,6 +39,15 @@ func TestResolveStorePathReturnsConfigJSONByDefault(t *testing.T) {
 	}
 }
 
+func TestDefaultSettingsUsesMoltenhubHiddenDataDir(t *testing.T) {
+	t.Parallel()
+
+	settings := DefaultSettings()
+	if got, want := settings.DataDir, defaultDataDir; got != want {
+		t.Fatalf("default data dir = %q, want %q", got, want)
+	}
+}
+
 func TestResolveStorePathMigratesLegacyStateJSON(t *testing.T) {
 	t.Parallel()
 

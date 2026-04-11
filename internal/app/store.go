@@ -14,6 +14,10 @@ import (
 
 const maxRecentEvents = 40
 
+const (
+	defaultDataDir = ".moltenhub"
+)
+
 type Store struct {
 	path  string
 	mu    sync.RWMutex
@@ -32,14 +36,14 @@ func DefaultSettings() Settings {
 		SessionKey:   envOrDefault("MOLTENHUB_SESSION_KEY", "main"),
 		PollInterval: 2 * time.Second,
 		TaskTimeout:  5 * time.Minute,
-		DataDir:      envOrDefault("APP_DATA_DIR", "data"),
+		DataDir:      envOrDefault("APP_DATA_DIR", defaultDataDir),
 	}
 }
 
 func ResolveStorePath(dataDir string) (string, error) {
 	dataDir = strings.TrimSpace(dataDir)
 	if dataDir == "" {
-		dataDir = "data"
+		dataDir = defaultDataDir
 	}
 	if err := os.MkdirAll(dataDir, 0o755); err != nil {
 		return "", fmt.Errorf("create data directory: %w", err)
