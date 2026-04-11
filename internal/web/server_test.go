@@ -586,6 +586,32 @@ func TestHandleStylesEnsuresHiddenModalBackdropsStayHidden(t *testing.T) {
 	}
 }
 
+func TestHandleStylesUsesNeutralDefaultForSettingsDockButton(t *testing.T) {
+	t.Parallel()
+
+	server, err := New(&stubService{
+		state: app.AppState{
+			Settings: app.DefaultSettings(),
+		},
+	})
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/styles.css", nil)
+	rec := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 response, got %d", rec.Code)
+	}
+	if !strings.Contains(body, ".hub-profile-button {\n  opacity: 1;\n  pointer-events: auto;\n  color: var(--muted-foreground);") {
+		t.Fatalf("expected settings dock button to use neutral default color token, body=%s", body)
+	}
+}
+
 func TestHandleIndexHidesSubActionsUntilBoundAndConnected(t *testing.T) {
 	t.Parallel()
 
