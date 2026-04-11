@@ -33,7 +33,7 @@
     </header>
 
     {{if .Flash}}
-    <section class="flash {{if .IsError}}flash-error{{else}}flash-info{{end}}">
+    <section class="flash {{if .IsError}}flash-error{{else}}flash-info{{end}}" data-auto-dismiss-seconds="12">
       {{.Flash}}
     </section>
     {{end}}
@@ -268,8 +268,22 @@
       const bindSubmit = document.getElementById("bind-submit");
       const onboardingSteps = document.getElementById("onboarding-steps");
       const onboardingMessage = document.getElementById("onboarding-message");
+      const flash = document.querySelector(".flash[data-auto-dismiss-seconds]");
       if (!shell || !indicator || !label || !description || !subActions || !subActionsNotice) {
         return;
+      }
+
+      if (flash) {
+        const configuredSeconds = Number.parseFloat(flash.dataset.autoDismissSeconds || "");
+        const dismissDelay = Number.isFinite(configuredSeconds) && configuredSeconds > 0
+          ? configuredSeconds * 1000
+          : 12000;
+        window.setTimeout(() => {
+          flash.classList.add("flash-fading");
+          window.setTimeout(() => {
+            flash.remove();
+          }, 480);
+        }, dismissDelay);
       }
 
       if (globalSettingsForm) {

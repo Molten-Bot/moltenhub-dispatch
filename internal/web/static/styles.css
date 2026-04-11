@@ -3671,6 +3671,11 @@ p,
   padding: 13px 16px;
   box-shadow: var(--shadow-sm);
   background: var(--surface-glass);
+  transition: opacity 0.45s ease;
+}
+
+.flash.flash-fading {
+  opacity: 0;
 }
 
 .flash-info {
