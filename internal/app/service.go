@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -1266,15 +1267,21 @@ func errorDetail(err error) any {
 	return err.Error()
 }
 
-func stringFromMap(values map[string]any, key string) string {
+func stringFromMap(values map[string]any, keys ...string) string {
 	if values == nil {
 		return ""
 	}
-	value, ok := values[key].(string)
-	if !ok {
-		return ""
+	for _, key := range keys {
+		value, ok := values[key].(string)
+		if !ok {
+			continue
+		}
+		trimmed := strings.TrimSpace(value)
+		if trimmed != "" {
+			return trimmed
+		}
 	}
-	return strings.TrimSpace(value)
+	return ""
 }
 
 func (s *Service) tryMarkTaskFailureOffline(ctx context.Context, pending PendingTask, report failureReport) {
@@ -1561,12 +1568,14 @@ func nestedMap(entry map[string]any, key string) map[string]any {
 }
 
 func firstCapabilityString(primary map[string]any, metadata map[string]any, agent map[string]any, keys ...string) string {
-	for _, source := range []map[string]any{primary, metadata, agent} {
-		if source == nil {
-			continue
-		}
-		if value := stringFromMap(source, keys...); value != "" {
-			return value
+	for _, key := range keys {
+		for _, source := range []map[string]any{primary, metadata, agent} {
+			if source == nil {
+				continue
+			}
+			if value := stringFromMap(source, key); value != "" {
+				return value
+			}
 		}
 	}
 	return ""
@@ -1862,7 +1871,10 @@ func hubReachable(err error) bool {
 		return true
 	}
 	var apiErr *hub.APIError
-	return errors.As(err, &apiErr)
+	if !errors.As(err, &apiErr) {
+		return false
+	}
+	return apiErr.StatusCode != http.StatusUnauthorized && apiErr.StatusCode != http.StatusForbidden
 }
 
 func sleepWithContext(ctx context.Context, wait time.Duration) bool {
