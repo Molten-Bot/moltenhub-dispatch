@@ -444,6 +444,9 @@ func TestHandleIndexRendersCompletedOnboardingFlowForBoundSession(t *testing.T) 
 	if !strings.Contains(body, `onboarding-step onboarding-step-completed" data-step-id="bind"`) {
 		t.Fatalf("expected bind step to render as completed once bound, body=%s", body)
 	}
+	if !strings.Contains(body, `onboarding-step onboarding-step-completed" data-step-id="work_bind"`) {
+		t.Fatalf("expected work_bind step to render as completed once bound, body=%s", body)
+	}
 	if !strings.Contains(body, `onboarding-step onboarding-step-completed" data-step-id="profile_set"`) {
 		t.Fatalf("expected profile_set step to render as completed once bound, body=%s", body)
 	}

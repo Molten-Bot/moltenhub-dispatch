@@ -13,24 +13,25 @@ import (
 )
 
 type fakeHubClient struct {
-	bindResponse        hub.BindResponse
-	bindRequests        []hub.BindRequest
-	updateMetadataCalls []hub.UpdateMetadataRequest
-	updateMetadataErr   error
-	capabilitiesCalls   int
-	capabilitiesErr     error
-	publishCalls        []hub.PublishRequest
-	offlineCalls        []hub.OfflineRequest
-	baseURLCalls        []string
-	runtimeEndpoints    []hub.RuntimeEndpoints
-	currentBaseURL      string
-	expectedMetadataURL string
-	expectedPullURL     string
-	expectedOfflineURL  string
-	pullMessage         hub.PullResponse
-	pullOK              bool
-	pullErr             error
-	publishErr          error
+	bindResponse          hub.BindResponse
+	bindRequests          []hub.BindRequest
+	updateMetadataCalls   []hub.UpdateMetadataRequest
+	updateMetadataErr     error
+	capabilitiesCalls     int
+	capabilitiesErr       error
+	capabilitiesErrOnCall int
+	publishCalls          []hub.PublishRequest
+	offlineCalls          []hub.OfflineRequest
+	baseURLCalls          []string
+	runtimeEndpoints      []hub.RuntimeEndpoints
+	currentBaseURL        string
+	expectedMetadataURL   string
+	expectedPullURL       string
+	expectedOfflineURL    string
+	pullMessage           hub.PullResponse
+	pullOK                bool
+	pullErr               error
+	publishErr            error
 }
 
 type fakeRealtimeSession struct {
@@ -61,7 +62,7 @@ func (f *fakeHubClient) UpdateMetadata(_ context.Context, _ string, req hub.Upda
 
 func (f *fakeHubClient) GetCapabilities(_ context.Context, _ string) (map[string]any, error) {
 	f.capabilitiesCalls++
-	if f.capabilitiesErr != nil {
+	if f.capabilitiesErr != nil && (f.capabilitiesErrOnCall == 0 || f.capabilitiesErrOnCall == f.capabilitiesCalls) {
 		return nil, f.capabilitiesErr
 	}
 	return map[string]any{"advertised_skills": []any{}}, nil
@@ -175,8 +176,8 @@ func TestBindAndRegisterAdvertisesDispatchSkills(t *testing.T) {
 	if len(fake.updateMetadataCalls) != 1 {
 		t.Fatalf("expected metadata update, got %d", len(fake.updateMetadataCalls))
 	}
-	if fake.capabilitiesCalls != 1 {
-		t.Fatalf("expected one activation capabilities call, got %d", fake.capabilitiesCalls)
+	if fake.capabilitiesCalls != 2 {
+		t.Fatalf("expected credential + activation capability checks, got %d", fake.capabilitiesCalls)
 	}
 	skills, ok := fake.updateMetadataCalls[0].Metadata["skills"].([]map[string]string)
 	if !ok {
@@ -264,25 +265,41 @@ func TestBindAndRegisterUsesSubmittedHandle(t *testing.T) {
 	}
 }
 
-func TestBindAndRegisterRejectsBindWithoutHandle(t *testing.T) {
+func TestBindAndRegisterSupportsTemporaryHandleWhenHandleIsOmitted(t *testing.T) {
 	t.Parallel()
 
 	service, fake := newTestService(t)
 	fake.bindResponse = hub.BindResponse{
 		AgentToken: "agent-token",
+		Handle:     "tmp-agent-123",
+		APIBase:    "https://na.hub.molten.bot",
 	}
 
 	err := service.BindAndRegister(context.Background(), BindProfile{
 		BindToken: "bind-token",
 	})
-	if err == nil {
-		t.Fatal("expected bind validation error")
+	if err != nil {
+		t.Fatalf("bind and register: %v", err)
 	}
-	if err.Error() != "handle is required" {
-		t.Fatalf("unexpected error: %v", err)
+	if len(fake.bindRequests) != 1 {
+		t.Fatalf("expected one bind request, got %#v", fake.bindRequests)
 	}
-	if len(fake.bindRequests) != 0 {
-		t.Fatalf("did not expect bind request when validation fails, got %#v", fake.bindRequests)
+	if fake.bindRequests[0].Handle != "" {
+		t.Fatalf("expected empty bind handle for temporary handle flow, got %#v", fake.bindRequests[0])
+	}
+	if len(fake.updateMetadataCalls) != 1 {
+		t.Fatalf("expected one metadata update, got %d", len(fake.updateMetadataCalls))
+	}
+	if fake.updateMetadataCalls[0].Handle != "" {
+		t.Fatalf("expected metadata handle omitted until finalization, got %q", fake.updateMetadataCalls[0].Handle)
+	}
+
+	state := service.store.Snapshot()
+	if state.Session.Handle != "tmp-agent-123" {
+		t.Fatalf("expected temporary handle to persist, got %q", state.Session.Handle)
+	}
+	if state.Session.HandleFinalized {
+		t.Fatal("did not expect temporary handle to be finalized")
 	}
 }
 
@@ -423,6 +440,7 @@ func TestBindAndRegisterReportsActivationFailureStage(t *testing.T) {
 		APIBase:    "https://na.hub.molten.bot",
 	}
 	fake.capabilitiesErr = errors.New("capabilities unavailable")
+	fake.capabilitiesErrOnCall = 2
 
 	err := service.BindAndRegister(context.Background(), BindProfile{
 		BindToken:       "bind-token",
@@ -435,6 +453,39 @@ func TestBindAndRegisterReportsActivationFailureStage(t *testing.T) {
 	}
 	if stage := OnboardingStageFromError(err); stage != OnboardingStepWorkActivate {
 		t.Fatalf("expected work_activate stage, got %q", stage)
+	}
+
+	state := service.store.Snapshot()
+	if state.Session.AgentToken != "agent-token" {
+		t.Fatalf("expected token to persist after bind success, got %q", state.Session.AgentToken)
+	}
+}
+
+func TestBindAndRegisterReportsCredentialVerificationFailureStage(t *testing.T) {
+	t.Parallel()
+
+	service, fake := newTestService(t)
+	fake.bindResponse = hub.BindResponse{
+		AgentToken: "agent-token",
+		AgentUUID:  "agent-uuid",
+		AgentURI:   "molten://dispatch/agent",
+		Handle:     "dispatch-agent",
+		APIBase:    "https://na.hub.molten.bot",
+	}
+	fake.capabilitiesErr = errors.New("capabilities unavailable")
+	fake.capabilitiesErrOnCall = 1
+
+	err := service.BindAndRegister(context.Background(), BindProfile{
+		BindToken:       "bind-token",
+		Handle:          "dispatch-agent",
+		DisplayName:     "Dispatch Agent",
+		ProfileMarkdown: "Dispatches skill requests to connected agents.",
+	})
+	if err == nil {
+		t.Fatal("expected credential verification failure")
+	}
+	if stage := OnboardingStageFromError(err); stage != OnboardingStepWorkBind {
+		t.Fatalf("expected work_bind stage, got %q", stage)
 	}
 
 	state := service.store.Snapshot()

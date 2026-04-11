@@ -9,10 +9,13 @@ func TestDefaultOnboardingSteps(t *testing.T) {
 	t.Parallel()
 
 	steps := DefaultOnboardingSteps()
-	if len(steps) != 3 {
-		t.Fatalf("expected 3 onboarding steps, got %d", len(steps))
+	if len(steps) != 4 {
+		t.Fatalf("expected 4 onboarding steps, got %d", len(steps))
 	}
-	if steps[0].ID != OnboardingStepBind || steps[1].ID != OnboardingStepProfileSet || steps[2].ID != OnboardingStepWorkActivate {
+	if steps[0].ID != OnboardingStepBind ||
+		steps[1].ID != OnboardingStepWorkBind ||
+		steps[2].ID != OnboardingStepProfileSet ||
+		steps[3].ID != OnboardingStepWorkActivate {
 		t.Fatalf("unexpected step order: %#v", steps)
 	}
 }

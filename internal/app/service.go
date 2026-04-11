@@ -108,11 +108,7 @@ func (s *Service) BindAndRegister(ctx context.Context, profile BindProfile) erro
 		Emoji:           profile.Emoji,
 		ProfileMarkdown: profile.ProfileMarkdown,
 	})
-	resolvedHandle, err := resolveBindHandle(agentProfile.Handle)
-	if err != nil {
-		return WrapOnboardingError(OnboardingStepBind, err)
-	}
-	agentProfile.Handle = resolvedHandle
+	agentProfile.Handle = normalizeBindHandle(agentProfile.Handle)
 	handleRequestedDuringBind := agentProfile.Handle != ""
 	if setter, ok := s.hub.(baseURLSetter); ok {
 		setter.SetBaseURL(runtime.HubURL)
@@ -168,6 +164,11 @@ func (s *Service) BindAndRegister(ctx context.Context, profile BindProfile) erro
 		return WrapOnboardingError(OnboardingStepBind, err)
 	}
 	s.settings = s.store.Snapshot().Settings
+	if _, err := s.hub.GetCapabilities(ctx, result.AgentToken); err != nil {
+		s.noteHubInteraction(err, ConnectionTransportHTTP)
+		return WrapOnboardingError(OnboardingStepWorkBind, fmt.Errorf("agent bound, but credential verification failed: %w", err))
+	}
+	s.noteHubInteraction(nil, ConnectionTransportHTTP)
 
 	registrationProfile := agentProfile
 	if !handleRequestedDuringBind {
@@ -1160,12 +1161,8 @@ func normalizeAgentProfile(profile AgentProfile) AgentProfile {
 	return profile
 }
 
-func resolveBindHandle(handle string) (string, error) {
-	handle = strings.TrimSpace(handle)
-	if handle != "" {
-		return handle, nil
-	}
-	return "", errors.New("handle is required")
+func normalizeBindHandle(handle string) string {
+	return strings.TrimSpace(handle)
 }
 
 func buildAgentMetadata(profile AgentProfile, sessionKey string) map[string]any {
