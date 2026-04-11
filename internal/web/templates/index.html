@@ -76,24 +76,34 @@
 
       <section class="grid two-up">
         <article class="panel">
-          <h2>Connected Agent Directory</h2>
-          {{if .State.ConnectedAgents}}
-          <div class="list">
+          <div class="panel-heading-inline">
+            <h2>Connected Agents</h2>
+            <button
+              type="button"
+              id="connected-agents-refresh"
+              class="connected-agents-refresh"
+              aria-label="Refresh connected agents"
+              title="Refresh connected agents"
+            >
+              <span aria-hidden="true">↻</span>
+              <span>Refresh</span>
+            </button>
+          </div>
+          <p id="connected-agents-refresh-status" class="connected-agents-refresh-status" aria-live="polite"></p>
+          <p id="connected-agents-empty" class="empty" {{if .State.ConnectedAgents}}hidden{{end}}>No connected agents configured yet.</p>
+          <div id="connected-agents-list" class="list connected-agents-list" {{if not .State.ConnectedAgents}}hidden{{end}}>
             {{range .State.ConnectedAgents}}
-            <article class="card">
-              <h3>{{if .Name}}{{.Name}}{{else}}{{.ID}}{{end}}</h3>
-              <p><strong>Ref:</strong> {{if .ID}}{{.ID}}{{else}}-{{end}}</p>
-              <p><strong>UUID:</strong> {{if .AgentUUID}}{{.AgentUUID}}{{else}}-{{end}}</p>
-              <p><strong>URI:</strong> {{if .AgentURI}}{{.AgentURI}}{{else}}-{{end}}</p>
-              <p><strong>Default skill:</strong> {{if .DefaultSkill}}{{.DefaultSkill}}{{else}}-{{end}}</p>
-              <p><strong>Failure reviewer:</strong> {{if .FailureReviewer}}yes{{else}}no{{end}}</p>
-              <pre>{{toJSON .AdvertisedSkills}}</pre>
+            <article class="connected-agent-card">
+              <div class="connected-agent-card-main">
+                <span class="connected-agent-avatar" aria-hidden="true">🤖</span>
+                <div class="connected-agent-card-copy">
+                  <h3>{{if .Name}}{{.Name}}{{else if .ID}}{{.ID}}{{else if .AgentUUID}}{{.AgentUUID}}{{else if .AgentURI}}{{.AgentURI}}{{else}}Unknown agent{{end}}</h3>
+                  <p class="connected-agent-handle">{{if .ID}}@{{.ID}}{{else if .AgentUUID}}{{.AgentUUID}}{{else if .AgentURI}}{{.AgentURI}}{{else}}unknown{{end}}</p>
+                </div>
+              </div>
             </article>
             {{end}}
           </div>
-          {{else}}
-          <p class="empty">No connected agents configured yet.</p>
-          {{end}}
         </article>
 
         <article class="panel">
@@ -370,6 +380,10 @@
       const hubConnText = document.getElementById("hub-conn-text");
       const subActions = document.getElementById("sub-actions");
       const subActionsNotice = document.getElementById("sub-actions-notice");
+      const connectedAgentsList = document.getElementById("connected-agents-list");
+      const connectedAgentsEmpty = document.getElementById("connected-agents-empty");
+      const connectedAgentsRefresh = document.getElementById("connected-agents-refresh");
+      const connectedAgentsRefreshStatus = document.getElementById("connected-agents-refresh-status");
       const onboardingModalBackdrop = document.getElementById("onboarding-modal-backdrop");
       const agentSettingsDockButton = document.getElementById("agent-settings-dock-button");
       const agentSettingsModalBackdrop = document.getElementById("agent-settings-modal-backdrop");
@@ -1111,6 +1125,133 @@
         });
       };
 
+      const trimmedString = (value) => String(value || "").trim();
+
+      const connectedAgentDisplayName = (agent) => {
+        const displayName = trimmedString(agent && agent.name);
+        if (displayName) {
+          return displayName;
+        }
+        const handle = trimmedString(agent && agent.id);
+        if (handle) {
+          return handle;
+        }
+        const uuid = trimmedString(agent && agent.agent_uuid);
+        if (uuid) {
+          return uuid;
+        }
+        const uri = trimmedString(agent && agent.agent_uri);
+        if (uri) {
+          return uri;
+        }
+        return "Unknown agent";
+      };
+
+      const connectedAgentHandle = (agent) => {
+        const handle = trimmedString(agent && agent.id);
+        if (handle) {
+          return `@${handle}`;
+        }
+        const uuid = trimmedString(agent && agent.agent_uuid);
+        if (uuid) {
+          return uuid;
+        }
+        const uri = trimmedString(agent && agent.agent_uri);
+        if (uri) {
+          return uri;
+        }
+        return "unknown";
+      };
+
+      const connectedAgentEmoji = (agent) => {
+        const emoji = firstEmojiGrapheme(trimmedString(agent && agent.emoji));
+        if (emoji) {
+          return emoji;
+        }
+        return "🤖";
+      };
+
+      const renderConnectedAgents = (agents) => {
+        if (!(connectedAgentsList instanceof HTMLElement) || !(connectedAgentsEmpty instanceof HTMLElement)) {
+          return;
+        }
+        const nextAgents = Array.isArray(agents) ? agents : [];
+        connectedAgentsList.innerHTML = "";
+        if (nextAgents.length === 0) {
+          connectedAgentsList.hidden = true;
+          connectedAgentsEmpty.hidden = false;
+          return;
+        }
+        nextAgents.forEach((agent) => {
+          const card = document.createElement("article");
+          card.className = "connected-agent-card";
+
+          const cardMain = document.createElement("div");
+          cardMain.className = "connected-agent-card-main";
+
+          const avatar = document.createElement("span");
+          avatar.className = "connected-agent-avatar";
+          avatar.setAttribute("aria-hidden", "true");
+          avatar.textContent = connectedAgentEmoji(agent);
+
+          const copy = document.createElement("div");
+          copy.className = "connected-agent-card-copy";
+
+          const title = document.createElement("h3");
+          title.textContent = connectedAgentDisplayName(agent);
+
+          const handle = document.createElement("p");
+          handle.className = "connected-agent-handle";
+          handle.textContent = connectedAgentHandle(agent);
+
+          copy.appendChild(title);
+          copy.appendChild(handle);
+          cardMain.appendChild(avatar);
+          cardMain.appendChild(copy);
+          card.appendChild(cardMain);
+          connectedAgentsList.appendChild(card);
+        });
+        connectedAgentsEmpty.hidden = true;
+        connectedAgentsList.hidden = false;
+      };
+
+      const setConnectedAgentsRefreshState = (busy, status, isError = false) => {
+        if (connectedAgentsRefresh instanceof HTMLButtonElement) {
+          connectedAgentsRefresh.disabled = busy;
+          connectedAgentsRefresh.setAttribute("aria-busy", busy ? "true" : "false");
+        }
+        if (connectedAgentsRefreshStatus instanceof HTMLElement) {
+          connectedAgentsRefreshStatus.classList.toggle("is-error", isError);
+          connectedAgentsRefreshStatus.textContent = trimmedString(status);
+        }
+      };
+
+      const refreshConnectedAgents = async () => {
+        if (!(connectedAgentsList instanceof HTMLElement)) {
+          return;
+        }
+        setConnectedAgentsRefreshState(true, "Refreshing connected agents...");
+        try {
+          const response = await fetch("/api/connected-agents", {
+            method: "GET",
+            headers: { Accept: "application/json" },
+          });
+          if (!response.ok) {
+            throw new Error(`connected agents refresh failed with ${response.status}`);
+          }
+          const body = await response.json();
+          const agents = Array.isArray(body && body.connected_agents)
+            ? body.connected_agents
+            : [];
+          renderConnectedAgents(agents);
+          const refreshedAt = new Date().toLocaleTimeString();
+          setConnectedAgentsRefreshState(false, `Updated ${refreshedAt}`);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Unable to refresh connected agents.";
+          setConnectedAgentsRefreshState(false, message, true);
+        }
+      };
+
       const renderHubConnection = (state) => {
         if (!state || typeof state !== "object") {
           setHubConnection("disconnected", "Hub status unavailable");
@@ -1192,6 +1333,12 @@
           if (event.key === "Enter" || event.key === " ") {
             maybeOpenHubConnectPage(event);
           }
+        });
+      }
+
+      if (connectedAgentsRefresh instanceof HTMLButtonElement) {
+        connectedAgentsRefresh.addEventListener("click", () => {
+          void refreshConnectedAgents();
         });
       }
 
