@@ -669,7 +669,7 @@ func TestHandleDispatchResolutionFailureSendsDetailedFailureAndQueuesFollowUp(t 
 	if len(state.FollowUpTasks) != 1 {
 		t.Fatalf("expected 1 follow-up task, got %d", len(state.FollowUpTasks))
 	}
-	if got := state.FollowUpTasks[0].RunConfig.Repos; len(got) != 1 || got[0] != "/tmp/repo" {
+	if got := state.FollowUpTasks[0].RunConfig.Repos; len(got) != 1 || got[0] != followUpRepoURL {
 		t.Fatalf("unexpected run config repos: %#v", got)
 	}
 	if got := state.FollowUpTasks[0].LogPaths; len(got) != 2 || got[0] != "/tmp/repo/logs/failure.log" {
@@ -800,7 +800,7 @@ func TestHandleDownstreamFailureSendsDetailedFailureAndQueuesFollowUp(t *testing
 	if len(state.PendingTasks) != 0 {
 		t.Fatalf("expected task to be cleared, got %d pending", len(state.PendingTasks))
 	}
-	if got := state.FollowUpTasks[0].RunConfig.Repos; len(got) != 1 || got[0] != "/tmp/repo" {
+	if got := state.FollowUpTasks[0].RunConfig.Repos; len(got) != 1 || got[0] != followUpRepoURL {
 		t.Fatalf("unexpected run config repos: %#v", got)
 	}
 	if got := state.FollowUpTasks[0].LogPaths; len(got) != 2 || got[0] != "/tmp/original.log" || got[1] != filepath.Join(service.settings.DataDir, "logs", "task-1.log") {
@@ -833,6 +833,135 @@ func TestHandleDownstreamFailureSendsDetailedFailureAndQueuesFollowUp(t *testing
 	}
 	if originalRequest["repo"] != "/tmp/repo" {
 		t.Fatalf("unexpected original_request repo: %#v", originalRequest)
+	}
+}
+
+func TestHandleDispatchResolutionFailureQueuesFollowUpWhenCallerPublishFails(t *testing.T) {
+	t.Parallel()
+
+	service, fake := newTestService(t)
+	fake.publishErr = errors.New("publish failure response failed")
+	err := service.store.Update(func(state *AppState) error {
+		state.Session.AgentToken = "agent-token"
+		state.Session.AgentUUID = "self-uuid"
+		state.Session.AgentURI = "molten://dispatch/self"
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("seed store: %v", err)
+	}
+
+	message := hub.PullResponse{
+		DeliveryID:    "delivery-1",
+		FromAgentUUID: "caller-uuid",
+		OpenClawMessage: hub.OpenClawMessage{
+			Type:      "skill_request",
+			SkillName: dispatchSkillName,
+			RequestID: "parent-req",
+			Payload: map[string]any{
+				"target_agent_uuid": "missing-agent",
+				"skill_name":        "run_task",
+				"repo":              "/tmp/repo",
+				"log_paths":         []string{"/tmp/repo/logs/failure.log"},
+				"payload": map[string]any{
+					"input": "Issue an offline to moltenbot hub",
+				},
+				"payload_format": "json",
+			},
+		},
+	}
+
+	if err := service.handleInboundMessage(context.Background(), message); err != nil {
+		t.Fatalf("handle inbound message: %v", err)
+	}
+
+	if len(fake.publishCalls) != 1 {
+		t.Fatalf("expected one failed caller publish, got %d", len(fake.publishCalls))
+	}
+	if len(fake.offlineCalls) != 1 {
+		t.Fatalf("expected one offline call, got %d", len(fake.offlineCalls))
+	}
+
+	state := service.store.Snapshot()
+	if len(state.FollowUpTasks) != 1 {
+		t.Fatalf("expected 1 follow-up task, got %d", len(state.FollowUpTasks))
+	}
+	if state.FollowUpTasks[0].Status != "pending_reviewer" {
+		t.Fatalf("expected pending reviewer follow-up, got %q", state.FollowUpTasks[0].Status)
+	}
+	if got := state.FollowUpTasks[0].RunConfig.Repos; len(got) != 1 || got[0] != followUpRepoURL {
+		t.Fatalf("unexpected run config repos: %#v", got)
+	}
+}
+
+func TestHandleDownstreamFailureQueuesFollowUpWhenCallerPublishFails(t *testing.T) {
+	t.Parallel()
+
+	service, fake := newTestService(t)
+	fake.publishErr = errors.New("publish failure response failed")
+	err := service.store.Update(func(state *AppState) error {
+		state.Session.AgentToken = "agent-token"
+		state.Session.AgentUUID = "self-uuid"
+		state.Session.AgentURI = "molten://dispatch/self"
+		state.PendingTasks = []PendingTask{
+			{
+				ID:                "task-1",
+				ParentRequestID:   "parent-req",
+				ChildRequestID:    "child-req",
+				OriginalSkillName: "run_task",
+				CallerAgentUUID:   "caller-uuid",
+				CallerRequestID:   "parent-req",
+				Repo:              "/tmp/repo",
+				LogPath:           filepath.Join(service.settings.DataDir, "logs", "task-1.log"),
+				CreatedAt:         time.Now().Add(-time.Minute),
+				ExpiresAt:         time.Now().Add(time.Minute),
+				DispatchPayload: map[string]any{
+					"repo":      "/tmp/repo",
+					"log_paths": []string{"/tmp/original.log"},
+					"input":     "Issue an offline to moltenbot hub",
+				},
+			},
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("seed store: %v", err)
+	}
+
+	message := hub.PullResponse{
+		DeliveryID:    "delivery-1",
+		FromAgentUUID: "worker-uuid",
+		OpenClawMessage: hub.OpenClawMessage{
+			Type:      "skill_result",
+			SkillName: "run_task",
+			RequestID: "child-req",
+			ReplyTo:   "parent-req",
+			OK:        boolPtr(false),
+			Error:     "task execution failed",
+			Payload:   map[string]any{"status": "failed"},
+		},
+	}
+
+	if err := service.handleInboundMessage(context.Background(), message); err != nil {
+		t.Fatalf("handle inbound message: %v", err)
+	}
+
+	if len(fake.publishCalls) != 1 {
+		t.Fatalf("expected one failed caller publish, got %d", len(fake.publishCalls))
+	}
+	if len(fake.offlineCalls) != 1 {
+		t.Fatalf("expected one offline call, got %d", len(fake.offlineCalls))
+	}
+
+	state := service.store.Snapshot()
+	if len(state.PendingTasks) != 0 {
+		t.Fatalf("expected failed task to be removed, got %d pending", len(state.PendingTasks))
+	}
+	if len(state.FollowUpTasks) != 1 {
+		t.Fatalf("expected follow-up task, got %d", len(state.FollowUpTasks))
+	}
+	if got := state.FollowUpTasks[0].RunConfig.Repos; len(got) != 1 || got[0] != followUpRepoURL {
+		t.Fatalf("unexpected follow-up repos: %#v", got)
 	}
 }
 
@@ -891,13 +1020,13 @@ func TestDispatchFromUIFailureQueuesFollowUpAndMarksOffline(t *testing.T) {
 	if len(state.FollowUpTasks) != 1 {
 		t.Fatalf("expected follow-up task after failed dispatch, got %d", len(state.FollowUpTasks))
 	}
-	if got := state.FollowUpTasks[0].RunConfig.Repos; len(got) != 1 || got[0] != "/tmp/repo" {
+	if got := state.FollowUpTasks[0].RunConfig.Repos; len(got) != 1 || got[0] != followUpRepoURL {
 		t.Fatalf("unexpected follow-up repos: %#v", got)
 	}
 	if got := state.FollowUpTasks[0].LogPaths; len(got) != 2 || got[0] != "/tmp/repo/logs/failure.log" {
 		t.Fatalf("unexpected follow-up log paths: %#v", got)
 	}
-	if got := state.FollowUpTasks[0].RunConfig.Prompt; got != "Review the failing log paths first, identify every root cause behind the failed task, fix the underlying issues in this repository, validate locally where possible, and summarize the verified results." {
+	if got := state.FollowUpTasks[0].RunConfig.Prompt; got != followUpPrompt {
 		t.Fatalf("unexpected follow-up prompt: %q", got)
 	}
 }

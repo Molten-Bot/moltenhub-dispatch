@@ -18,6 +18,8 @@ const (
 	dispatchSkillName      = "dispatch_skill_request"
 	failureReviewSkillName = "review_failure_logs"
 	dispatcherHarness      = "moltenhub-dispatch"
+	followUpRepoURL        = "git@github.com:Molten-Bot/moltenhub-code.git"
+	followUpPrompt         = "Review the failing log paths first, identify every root cause behind the failed task, fix the underlying issues in this repository, validate locally where possible, and summarize the verified results."
 )
 
 var advertisedSkills = []map[string]string{
@@ -498,10 +500,15 @@ func (s *Service) handleSkillResult(ctx context.Context, message hub.PullRespons
 	}
 
 	isFailure := !messageSucceeded(message.OpenClawMessage)
-	if pending.CallerAgentUUID != "" || pending.CallerAgentURI != "" {
+	report := failureReport{}
+	if isFailure {
+		report = failureFromMessage(message.OpenClawMessage)
+	}
+
+	if hasCallerTarget(pending) {
 		if isFailure {
-			if err := s.publishFailureToCaller(ctx, state, pending, failureFromMessage(message.OpenClawMessage)); err != nil {
-				return err
+			if err := s.publishFailureToCaller(ctx, state, pending, report); err != nil {
+				_ = s.logEvent("error", "Caller failure publish failed", err.Error(), pending.ID, pending.LogPath)
 			}
 		} else {
 			if err := s.publishResultToCaller(ctx, state, pending, message.OpenClawMessage); err != nil {
@@ -511,10 +518,10 @@ func (s *Service) handleSkillResult(ctx context.Context, message hub.PullRespons
 	}
 
 	if isFailure {
-		if _, err := s.queueFollowUp(ctx, state, pending, failureFromMessage(message.OpenClawMessage)); err != nil {
+		if _, err := s.queueFollowUp(ctx, state, pending, report); err != nil {
 			return err
 		}
-		s.tryMarkTaskFailureOffline(ctx, pending, failureFromMessage(message.OpenClawMessage))
+		s.tryMarkTaskFailureOffline(ctx, pending, report)
 	}
 
 	if err := s.store.Update(func(current *AppState) error {
@@ -538,23 +545,17 @@ func (s *Service) expirePendingTasks(ctx context.Context) error {
 			continue
 		}
 		err := fmt.Errorf("task timed out waiting for %s", pending.OriginalSkillName)
-		if pending.CallerAgentUUID != "" || pending.CallerAgentURI != "" {
-			if publishErr := s.publishFailureToCaller(ctx, state, pending, failureFromError("Task failed because the downstream agent did not reply before the timeout.", err)); publishErr != nil {
-				return publishErr
+		report := failureFromError("Task failed because the downstream agent did not reply before the timeout.", err)
+		report.Detail = map[string]any{"timeout": true}
+		if hasCallerTarget(pending) {
+			if publishErr := s.publishFailureToCaller(ctx, state, pending, report); publishErr != nil {
+				_ = s.logEvent("error", "Caller timeout publish failed", publishErr.Error(), pending.ID, pending.LogPath)
 			}
 		}
-		if _, queueErr := s.queueFollowUp(ctx, state, pending, failureReport{
-			Message: "Task failed because the downstream agent did not reply before the timeout.",
-			Error:   err.Error(),
-			Detail:  map[string]any{"timeout": true},
-		}); queueErr != nil {
+		if _, queueErr := s.queueFollowUp(ctx, state, pending, report); queueErr != nil {
 			return queueErr
 		}
-		s.tryMarkTaskFailureOffline(ctx, pending, failureReport{
-			Message: "Task failed because the downstream agent did not reply before the timeout.",
-			Error:   err.Error(),
-			Detail:  map[string]any{"timeout": true},
-		})
+		s.tryMarkTaskFailureOffline(ctx, pending, report)
 		if updateErr := s.store.Update(func(current *AppState) error {
 			current.PendingTasks = RemovePendingTask(current.PendingTasks, pending.ChildRequestID)
 			return nil
@@ -566,9 +567,9 @@ func (s *Service) expirePendingTasks(ctx context.Context) error {
 }
 
 func (s *Service) failDispatchedTask(ctx context.Context, state AppState, pending PendingTask, report failureReport) error {
-	if pending.CallerAgentUUID != "" || pending.CallerAgentURI != "" {
+	if hasCallerTarget(pending) {
 		if err := s.publishFailureToCaller(ctx, state, pending, report); err != nil {
-			return err
+			_ = s.logEvent("error", "Caller failure publish failed", err.Error(), pending.ID, pending.LogPath)
 		}
 	}
 	_, err := s.queueFollowUp(ctx, state, pending, report)
@@ -592,10 +593,10 @@ func (s *Service) queueFollowUp(ctx context.Context, state AppState, pending Pen
 		FailedRepo:      fallbackRepo(pending.Repo),
 		LogPaths:        logPaths,
 		RunConfig: FollowUpRunConfig{
-			Repos:        []string{fallbackRepo(pending.Repo)},
+			Repos:        []string{followUpRepoURL},
 			BaseBranch:   "main",
 			TargetSubdir: ".",
-			Prompt:       "Review the failing log paths first, identify every root cause behind the failed task, fix the underlying issues in this repository, validate locally where possible, and summarize the verified results.",
+			Prompt:       followUpPrompt,
 		},
 		OriginalError:    formatFailureSummary(report),
 		OriginalRequest:  originalRequest,
@@ -677,15 +678,16 @@ func (s *Service) publishFailureToCaller(ctx context.Context, state AppState, pe
 	}
 
 	failurePayload := map[string]any{
-		"ok":           false,
-		"failure":      true,
-		"status":       "failed",
-		"message":      explicitFailureMessage(report.Message),
-		"error":        report.Error,
-		"retryable":    report.Retryable,
-		"next_action":  report.NextAction,
-		"error_detail": report.Detail,
-		"log_paths":    logPaths,
+		"ok":            false,
+		"failure":       true,
+		"status":        "failed",
+		"message":       explicitFailureMessage(report.Message),
+		"error":         report.Error,
+		"retryable":     report.Retryable,
+		"next_action":   report.NextAction,
+		"error_detail":  report.Detail,
+		"error_details": report.Detail,
+		"log_paths":     logPaths,
 	}
 
 	message := hub.OpenClawMessage{
@@ -825,10 +827,9 @@ func (s *Service) failUIRequest(ctx context.Context, state AppState, task Pendin
 	}); err != nil {
 		return fmt.Errorf("%w; task log write failed: %v", cause, err)
 	}
-	if _, err := s.queueFollowUp(ctx, state, task, report); err != nil {
-		return fmt.Errorf("%w; follow-up queue failed: %v", cause, err)
+	if err := s.failDispatchedTask(ctx, state, task, report); err != nil {
+		return fmt.Errorf("%w; failure handling failed: %v", cause, err)
 	}
-	s.tryMarkTaskFailureOffline(ctx, task, report)
 	return cause
 }
 
@@ -1154,6 +1155,10 @@ func (a ConnectedAgent) NameOrRef() string {
 		return a.AgentUUID
 	}
 	return a.AgentURI
+}
+
+func hasCallerTarget(task PendingTask) bool {
+	return task.CallerAgentUUID != "" || task.CallerAgentURI != ""
 }
 
 func normalizeAgentProfile(profile AgentProfile) AgentProfile {
