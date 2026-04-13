@@ -2269,6 +2269,50 @@ func TestHandleIndexRendersConnectedAgentsRefreshPanel(t *testing.T) {
 	}
 }
 
+func TestHandleIndexDefinesTrimmedStringBeforeDispatchPlaceholderSetup(t *testing.T) {
+	t.Parallel()
+
+	server, err := New(&stubService{
+		state: app.AppState{
+			Settings: app.DefaultSettings(),
+			Session: app.Session{
+				AgentToken: "agent-token",
+			},
+			Connection: app.ConnectionState{
+				Status:    app.ConnectionStatusConnected,
+				Transport: app.ConnectionTransportHTTP,
+			},
+			ConnectedAgents: []app.ConnectedAgent{
+				{
+					ID:           "dispatcher",
+					Name:         "Dispatcher",
+					DefaultSkill: "dispatch_skill_request",
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	helperIndex := strings.Index(body, `const trimmedString = (value) => String(value || "").trim();`)
+	if helperIndex == -1 {
+		t.Fatalf("expected trimmedString helper in rendered script, body=%s", body)
+	}
+	placeholderIndex := strings.Index(body, `const defaultSkillPayloadPlaceholder = skillPayloadInput instanceof HTMLTextAreaElement`)
+	if placeholderIndex == -1 {
+		t.Fatalf("expected default skill payload placeholder setup in rendered script, body=%s", body)
+	}
+	if helperIndex > placeholderIndex {
+		t.Fatalf("expected trimmedString helper to be defined before placeholder setup to avoid script initialization failures, body=%s", body)
+	}
+}
+
 func TestHandleIndexRejectsPostMethod(t *testing.T) {
 	t.Parallel()
 
