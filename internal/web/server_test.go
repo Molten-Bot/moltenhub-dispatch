@@ -664,6 +664,9 @@ func TestHandleIndexRendersBottomDockAndSettingsDialogForBoundSession(t *testing
 	if !strings.Contains(body, `id="agent-settings-dock-button"`) {
 		t.Fatalf("expected settings dock button, body=%s", body)
 	}
+	if !strings.Contains(body, `class="prompt-mode-link prompt-mode-link-logo hub-profile-button"`) {
+		t.Fatalf("expected settings dock button to render without an active class, body=%s", body)
+	}
 	if !strings.Contains(body, `id="theme-toggle"`) {
 		t.Fatalf("expected theme toggle dock button, body=%s", body)
 	}
@@ -775,6 +778,9 @@ func TestHandleStylesUsesNeutralDefaultForSettingsDockButton(t *testing.T) {
 	}
 	if !strings.Contains(body, ".hub-profile-button {\n  opacity: 1;\n  pointer-events: auto;\n  color: var(--muted-foreground);") {
 		t.Fatalf("expected settings dock button to use neutral default color token, body=%s", body)
+	}
+	if !strings.Contains(body, ".hub-profile-button {\n  opacity: 1;\n  pointer-events: auto;\n  min-height: 40px;\n  padding: 0;\n  border: 0;\n  background: transparent;\n  box-shadow: none;") {
+		t.Fatalf("expected settings dock button to clear shared pill button chrome, body=%s", body)
 	}
 }
 

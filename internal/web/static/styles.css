@@ -982,6 +982,11 @@ body .right-col.prompt-collapsed.task-list-hidden {
 .hub-profile-button {
   opacity: 1;
   pointer-events: auto;
+  min-height: 40px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
   color: var(--muted-foreground);
   transform: translateX(0) scale(1);
   transition:
@@ -1005,6 +1010,10 @@ body .right-col.prompt-collapsed.task-list-hidden {
   color: var(--running);
   background: transparent;
   box-shadow: none;
+}
+
+.hub-profile-button:focus-visible {
+  outline: none;
 }
 
 #moltenbot-hub-link img {
