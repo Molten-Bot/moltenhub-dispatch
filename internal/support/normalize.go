@@ -32,6 +32,33 @@ func StringFromMap(values map[string]any, keys ...string) string {
 	return ""
 }
 
+func StringFromAny(value any, keys ...string) string {
+	var out string
+	visitAnyMap(value, func(entry map[string]any) bool {
+		out = StringFromMap(entry, keys...)
+		return out != ""
+	})
+	return out
+}
+
+func MapByKey(value any, key string) map[string]any {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return nil
+	}
+
+	var out map[string]any
+	visitAnyMap(value, func(entry map[string]any) bool {
+		found, ok := entry[key].(map[string]any)
+		if !ok || len(found) == 0 {
+			return false
+		}
+		out = found
+		return true
+	})
+	return out
+}
+
 func CompactStrings(values []string) []string {
 	seen := make(map[string]struct{}, len(values))
 	out := make([]string, 0, len(values))
@@ -102,4 +129,32 @@ func shallowCloneMap(value map[string]any) map[string]any {
 		cloned[key] = item
 	}
 	return cloned
+}
+
+func visitAnyMap(value any, visit func(map[string]any) bool) bool {
+	switch typed := value.(type) {
+	case map[string]any:
+		if visit(typed) {
+			return true
+		}
+		for _, nestedKey := range []string{"data", "result", "agent", "payload"} {
+			if nested, ok := typed[nestedKey]; ok {
+				if visitAnyMap(nested, visit) {
+					return true
+				}
+			}
+		}
+		for _, nested := range typed {
+			if visitAnyMap(nested, visit) {
+				return true
+			}
+		}
+	case []any:
+		for _, entry := range typed {
+			if visitAnyMap(entry, visit) {
+				return true
+			}
+		}
+	}
+	return false
 }

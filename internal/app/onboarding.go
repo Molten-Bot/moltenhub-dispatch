@@ -65,6 +65,20 @@ func OnboardingStageFromError(err error) string {
 	return OnboardingStepBind
 }
 
+func NormalizeOnboardingMode(mode, bindToken, agentToken string) string {
+	mode = strings.ToLower(strings.TrimSpace(mode))
+	switch mode {
+	case OnboardingModeNew:
+		return OnboardingModeNew
+	case OnboardingModeExisting:
+		return OnboardingModeExisting
+	}
+	if strings.TrimSpace(bindToken) != "" && strings.TrimSpace(agentToken) == "" {
+		return OnboardingModeNew
+	}
+	return OnboardingModeExisting
+}
+
 func DefaultOnboardingSteps() []OnboardingStep {
 	return DefaultOnboardingStepsForMode(OnboardingModeNew)
 }
