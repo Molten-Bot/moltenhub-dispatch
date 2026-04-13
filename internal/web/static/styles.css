@@ -3438,22 +3438,71 @@ html[data-hover-mode="off"] .prompt-visibility-toggle:hover {
 .page-title-block {
   display: grid;
   gap: 6px;
+  min-width: 0;
 }
 
-.eyebrow {
-  margin: 0;
-  color: var(--surface-label);
-  font-size: 0.69rem;
+.brand-lockup {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.brand-logo-group {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  flex-shrink: 0;
+}
+
+.brand-logo {
+  display: block;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.rotating-brand-logo {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  margin: auto;
+  opacity: 0;
+  visibility: hidden;
+  transform: scale(0.96);
+  transition: opacity 0.65s ease, transform 0.65s ease, visibility 0.65s ease;
+  will-change: opacity, transform;
+  object-fit: contain;
+}
+
+.rotating-brand-logo.brand-logo-visible {
+  opacity: 1;
+  visibility: visible;
+  transform: scale(1);
+}
+
+.title {
+  font-family: "Sora", "Instrument Sans", sans-serif;
+  font-size: clamp(1.35rem, 1.8vw, 1.6rem);
   font-weight: 800;
-  letter-spacing: 0.11em;
-  text-transform: uppercase;
+  letter-spacing: -0.03em;
+  color: var(--text);
+  text-transform: none;
+}
+
+.sub {
+  color: var(--text-soft);
+  font-size: 0.92rem;
 }
 
 .page-subtitle {
-  color: var(--text-soft);
-  font-size: 1rem;
+  margin: 0;
+  line-height: 1.5;
   font-weight: 600;
-  line-height: 1.35;
 }
 
 .connection-status-row {

@@ -23,9 +23,18 @@
     data-connected-agent-count="{{len .State.ConnectedAgents}}"
   >
     <header class="page-header">
-      <div class="page-title-block">
-        <p class="eyebrow">Molten Hub Console</p>
-        <p class="page-subtitle">Dispatch work to your quiet army.</p>
+      <div class="brand-lockup">
+        <div class="brand-logo-group">
+          <img
+            id="moltenhub-logo"
+            class="brand-logo rotating-brand-logo brand-logo-visible"
+            src="/static/logo.svg"
+            alt="MoltenHub logo">
+        </div>
+        <div class="page-title-block">
+          <div class="title">Molten Hub Console</div>
+          <p class="sub page-subtitle">Dispatch work to your quiet army.</p>
+        </div>
       </div>
       <div class="status-row connection-status-row" aria-live="polite">
         <div
