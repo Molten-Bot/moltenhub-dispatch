@@ -675,7 +675,7 @@ func TestUpdateAgentProfileUpdatesMetadataAndStoredProfile(t *testing.T) {
 	}
 
 	err = service.UpdateAgentProfile(context.Background(), AgentProfile{
-		DisplayName:     "Jef's Codex",
+		DisplayName:     "Dispatch Agent",
 		Emoji:           "💯",
 		ProfileMarkdown: "What this runtime is for",
 	})
@@ -691,7 +691,7 @@ func TestUpdateAgentProfileUpdatesMetadataAndStoredProfile(t *testing.T) {
 	}
 
 	state := service.store.Snapshot()
-	if state.Session.DisplayName != "Jef's Codex" {
+	if state.Session.DisplayName != "Dispatch Agent" {
 		t.Fatalf("unexpected persisted display name: %q", state.Session.DisplayName)
 	}
 	if state.Session.Emoji != "💯" {

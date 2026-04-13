@@ -120,7 +120,7 @@ func TestHandleBindRedirectsOnFailure(t *testing.T) {
 		t.Fatalf("new server: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/bind", strings.NewReader("bind_token=bind-123&handle=codex-beast&display_name=Jef%27s+Codex&emoji=%F0%9F%92%AF&profile_markdown=What+this+runtime+is+for"))
+	req := httptest.NewRequest(http.MethodPost, "/bind", strings.NewReader("bind_token=bind-123&handle=codex-beast&display_name=Dispatch+Agent&emoji=%F0%9F%92%AF&profile_markdown=What+this+runtime+is+for"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rec := httptest.NewRecorder()
 
@@ -146,7 +146,7 @@ func TestHandleBindPassesSubmittedProfileToService(t *testing.T) {
 		t.Fatalf("new server: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/bind", strings.NewReader("bind_token=bind-123&handle=codex-beast&display_name=Jef%27s+Codex"))
+	req := httptest.NewRequest(http.MethodPost, "/bind", strings.NewReader("bind_token=bind-123&handle=codex-beast&display_name=Dispatch+Agent"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rec := httptest.NewRecorder()
 
@@ -158,7 +158,7 @@ func TestHandleBindPassesSubmittedProfileToService(t *testing.T) {
 	if stub.lastBindProfile.Handle != "codex-beast" {
 		t.Fatalf("expected submitted handle to reach service, got %#v", stub.lastBindProfile)
 	}
-	if stub.lastBindProfile.DisplayName != "Jef's Codex" {
+	if stub.lastBindProfile.DisplayName != "Dispatch Agent" {
 		t.Fatalf("expected submitted display name to reach service, got %#v", stub.lastBindProfile)
 	}
 }
@@ -450,7 +450,7 @@ func TestHandleIndexShowsBoundProfileState(t *testing.T) {
 				AgentToken:      "agent-token",
 				Handle:          "codex-beast",
 				HandleFinalized: true,
-				DisplayName:     "Jef's Codex",
+				DisplayName:     "Dispatch Agent",
 				Emoji:           "💯",
 				ProfileBio:      "What this runtime is for",
 			},
@@ -483,7 +483,7 @@ func TestHandleIndexShowsBoundProfileState(t *testing.T) {
 	if !strings.Contains(body, `name="handle" value="codex-beast" readonly`) {
 		t.Fatalf("expected readonly handle field, body=%s", body)
 	}
-	if !strings.Contains(body, `name="display_name" value="Jef&#39;s Codex"`) {
+	if !strings.Contains(body, `name="display_name" value="Dispatch Agent"`) {
 		t.Fatalf("expected display name field, body=%s", body)
 	}
 	if !strings.Contains(body, `id="hub-conn-item"`) {
@@ -1140,7 +1140,7 @@ func TestHandleIndexKeepsRecentEventsClosedByDefault(t *testing.T) {
 				{
 					Title:   "Task dispatched",
 					Level:   "info",
-					Detail:  "Queued code_for_me for moltenbot/jef/codex-beast",
+					Detail:  "Queued code_for_me for moltenbot/dispatch/codex-beast",
 					TaskID:  "task-123",
 					LogPath: ".moltenhub/logs/task-123.log",
 					At:      time.Unix(1, 0).UTC(),
@@ -1636,7 +1636,7 @@ func TestHandleBindShowsEditProfileAfterSessionBecomesBound(t *testing.T) {
 		t.Fatalf("new server: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/bind", strings.NewReader("bind_token=bind-123&handle=codex-beast&display_name=Jef%27s+Codex&emoji=%F0%9F%92%AF&profile_markdown=What+this+runtime+is+for"))
+	req := httptest.NewRequest(http.MethodPost, "/bind", strings.NewReader("bind_token=bind-123&handle=codex-beast&display_name=Dispatch+Agent&emoji=%F0%9F%92%AF&profile_markdown=What+this+runtime+is+for"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rec := httptest.NewRecorder()
 
@@ -1688,7 +1688,7 @@ func TestHandleProfileRedirectsOnFailure(t *testing.T) {
 		t.Fatalf("new server: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/profile", strings.NewReader("handle=dispatch-agent&display_name=Jef%27s+Codex"))
+	req := httptest.NewRequest(http.MethodPost, "/profile", strings.NewReader("handle=dispatch-agent&display_name=Dispatch+Agent"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rec := httptest.NewRecorder()
 
