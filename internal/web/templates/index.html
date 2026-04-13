@@ -1920,9 +1920,6 @@
       };
 
       const refreshConnectedAgents = async (_reason = "manual") => {
-        if (!(connectedAgentsList instanceof HTMLElement)) {
-          return;
-        }
         if (connectedAgentsRefreshInFlight) {
           return;
         }

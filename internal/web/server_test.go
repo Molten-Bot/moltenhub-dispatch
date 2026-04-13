@@ -1768,7 +1768,7 @@ func TestHandleIndexRendersConnectedAgentsRefreshPanel(t *testing.T) {
 	if !strings.Contains(body, `id="agent-settings-refresh-connected-agents"`) {
 		t.Fatalf("expected connected agents refresh control in settings modal, body=%s", body)
 	}
-	if !strings.Contains(body, `class="connected-agent-card"`) {
+	if !strings.Contains(body, `class="connected-agent-card connected-agent-card-button"`) {
 		t.Fatalf("expected connected agent card layout, body=%s", body)
 	}
 	if !strings.Contains(body, "@dispatcher") {
