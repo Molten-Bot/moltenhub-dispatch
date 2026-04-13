@@ -40,12 +40,12 @@
         <div
           id="local-conn-item"
           class="status-item status-item-compact"
-          title="Local: Connecting..."
-          aria-label="Local: Connecting..."
+          title="Local: Connected"
+          aria-label="Local: Connected"
           tabindex="0"
         >
-          <span id="local-conn-dot" class="dot"></span>
-          <span id="local-conn-text" class="status-tooltip">Local: Connecting...</span>
+          <span id="local-conn-dot" class="dot online"></span>
+          <span id="local-conn-text" class="status-tooltip">Local: Connected</span>
         </div>
         <div
           id="hub-conn-item"
@@ -1462,8 +1462,8 @@
         }
       };
 
-      const setLocalConnection = (online, text) => {
-        setIndicator(localConnItem, localConnDot, localConnText, "Local", online, text);
+      const setLocalConnection = (text = "Connected") => {
+        setIndicator(localConnItem, localConnDot, localConnText, "Local", true, text);
       };
 
       const applyHubDotMode = (mode) => {
@@ -2238,11 +2238,11 @@
             throw new Error(`status request failed with ${response.status}`);
           }
           const snapshot = await response.json();
-          setLocalConnection(true, "Connected");
+          setLocalConnection();
           renderHubConnection(snapshot);
         } catch (error) {
           const message = error instanceof Error ? error.message : "Unable to refresh hub status.";
-          setLocalConnection(false, "Reconnecting...");
+          setLocalConnection();
           setHubConnection("disconnected", message);
         }
       };
@@ -2257,6 +2257,7 @@
       }
 
       if (shell && hubConnItem && hubConnText && subActions && subActionsNotice) {
+        setLocalConnection();
         syncSubActions(latestHubConnectionState);
         refreshState();
         window.setInterval(refreshState, 3000);
