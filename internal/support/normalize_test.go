@@ -71,3 +71,25 @@ func TestStringFromMapAndFirstNonEmptyString(t *testing.T) {
 		t.Fatalf("FirstNonEmptyString = %q, want alpha", got)
 	}
 }
+
+func TestStringFromAnyAndMapByKeyTraverseNestedPayloads(t *testing.T) {
+	payload := map[string]any{
+		"result": map[string]any{
+			"agent": map[string]any{
+				"access_token": "  agent-token  ",
+			},
+			"endpoints": map[string]any{
+				"metadata": "https://na.hub.molten.bot/runtime/profile",
+			},
+		},
+	}
+
+	if got := StringFromAny(payload, "agent_token", "access_token"); got != "agent-token" {
+		t.Fatalf("StringFromAny = %q, want agent-token", got)
+	}
+
+	endpoints := MapByKey(payload, "endpoints")
+	if got := StringFromMap(endpoints, "metadata"); got != "https://na.hub.molten.bot/runtime/profile" {
+		t.Fatalf("MapByKey/StringFromMap = %q, want metadata endpoint", got)
+	}
+}

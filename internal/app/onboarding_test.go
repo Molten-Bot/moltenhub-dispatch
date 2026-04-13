@@ -55,3 +55,46 @@ func TestOnboardingStageFromError(t *testing.T) {
 		t.Fatalf("stage = %q, want empty", got)
 	}
 }
+
+func TestNormalizeOnboardingMode(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		mode       string
+		bindToken  string
+		agentToken string
+		want       string
+	}{
+		{
+			name: "explicit new mode wins",
+			mode: "new",
+			want: OnboardingModeNew,
+		},
+		{
+			name: "explicit existing mode wins",
+			mode: "existing",
+			want: OnboardingModeExisting,
+		},
+		{
+			name:      "bind token without agent token infers new",
+			bindToken: "bind-123",
+			want:      OnboardingModeNew,
+		},
+		{
+			name:       "agent token defaults to existing",
+			agentToken: "agent-123",
+			want:       OnboardingModeExisting,
+		},
+	}
+
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			if got := NormalizeOnboardingMode(test.mode, test.bindToken, test.agentToken); got != test.want {
+				t.Fatalf("NormalizeOnboardingMode(%q, %q, %q) = %q, want %q", test.mode, test.bindToken, test.agentToken, got, test.want)
+			}
+		})
+	}
+}

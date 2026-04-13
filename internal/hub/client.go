@@ -489,28 +489,13 @@ func normalizeBindResponse(out *BindResponse, payload any) {
 		return
 	}
 
-	out.AgentToken = firstNonEmptyString(
-		strings.TrimSpace(out.AgentToken),
-		extractStringFromAny(payload, "agent_token", "access_token", "bearer_token", "bind_token", "bindToken", "token"),
-	)
-	out.AgentUUID = firstNonEmptyString(
-		strings.TrimSpace(out.AgentUUID),
-		extractStringFromAny(payload, "agent_uuid", "agentUUID"),
-	)
-	out.AgentURI = firstNonEmptyString(
-		strings.TrimSpace(out.AgentURI),
-		extractStringFromAny(payload, "agent_uri", "agentURI"),
-	)
-	out.Handle = firstNonEmptyString(
-		strings.TrimSpace(out.Handle),
-		extractStringFromAny(payload, "handle"),
-	)
-	out.APIBase = firstNonEmptyString(
-		strings.TrimSpace(out.APIBase),
-		extractStringFromAny(payload, "api_base", "apiBase", "base_url", "baseUrl"),
-	)
+	out.AgentToken = mergePayloadString(out.AgentToken, payload, "agent_token", "access_token", "bearer_token", "bind_token", "bindToken", "token")
+	out.AgentUUID = mergePayloadString(out.AgentUUID, payload, "agent_uuid", "agentUUID")
+	out.AgentURI = mergePayloadString(out.AgentURI, payload, "agent_uri", "agentURI")
+	out.Handle = mergePayloadString(out.Handle, payload, "handle")
+	out.APIBase = mergePayloadString(out.APIBase, payload, "api_base", "apiBase", "base_url", "baseUrl")
 
-	if endpoints := extractMapByKey(payload, "endpoints"); len(endpoints) > 0 {
+	if endpoints := support.MapByKey(payload, "endpoints"); len(endpoints) > 0 {
 		applyBindEndpoints(out, endpoints)
 	}
 
@@ -529,92 +514,22 @@ func applyBindEndpoints(out *BindResponse, endpoints map[string]any) {
 		return
 	}
 
-	out.Endpoints.Manifest = firstNonEmptyString(
-		strings.TrimSpace(out.Endpoints.Manifest),
-		support.StringFromMap(endpoints, "manifest", "manifest_url", "manifestURL"),
-	)
-	out.Endpoints.Capabilities = firstNonEmptyString(
-		strings.TrimSpace(out.Endpoints.Capabilities),
-		support.StringFromMap(endpoints, "capabilities", "capabilities_url", "capabilitiesURL"),
-	)
-	out.Endpoints.Metadata = firstNonEmptyString(
-		strings.TrimSpace(out.Endpoints.Metadata),
-		support.StringFromMap(endpoints, "metadata", "metadata_url", "metadataURL", "profile", "profile_url", "profileURL"),
-	)
-	out.Endpoints.MessagesPull = firstNonEmptyString(
-		strings.TrimSpace(out.Endpoints.MessagesPull),
-		support.StringFromMap(endpoints, "messages_pull", "messagesPull"),
-	)
-	out.Endpoints.MessagesPush = firstNonEmptyString(
-		strings.TrimSpace(out.Endpoints.MessagesPush),
-		support.StringFromMap(endpoints, "messages_publish", "messagesPush"),
-	)
-	out.Endpoints.OpenClawPull = firstNonEmptyString(
-		strings.TrimSpace(out.Endpoints.OpenClawPull),
-		support.StringFromMap(endpoints, "openclaw_messages_pull", "openclaw_pull", "openclawPull"),
-	)
-	out.Endpoints.OpenClawPush = firstNonEmptyString(
-		strings.TrimSpace(out.Endpoints.OpenClawPush),
-		support.StringFromMap(endpoints, "openclaw_messages_publish", "openclaw_publish", "openclawPush"),
-	)
-	out.Endpoints.Offline = firstNonEmptyString(
-		strings.TrimSpace(out.Endpoints.Offline),
-		support.StringFromMap(endpoints, "openclaw_offline", "offline", "openclawOffline"),
-	)
+	out.Endpoints.Manifest = mergeEndpointString(out.Endpoints.Manifest, endpoints, "manifest", "manifest_url", "manifestURL")
+	out.Endpoints.Capabilities = mergeEndpointString(out.Endpoints.Capabilities, endpoints, "capabilities", "capabilities_url", "capabilitiesURL")
+	out.Endpoints.Metadata = mergeEndpointString(out.Endpoints.Metadata, endpoints, "metadata", "metadata_url", "metadataURL", "profile", "profile_url", "profileURL")
+	out.Endpoints.MessagesPull = mergeEndpointString(out.Endpoints.MessagesPull, endpoints, "messages_pull", "messagesPull")
+	out.Endpoints.MessagesPush = mergeEndpointString(out.Endpoints.MessagesPush, endpoints, "messages_publish", "messagesPush")
+	out.Endpoints.OpenClawPull = mergeEndpointString(out.Endpoints.OpenClawPull, endpoints, "openclaw_messages_pull", "openclaw_pull", "openclawPull")
+	out.Endpoints.OpenClawPush = mergeEndpointString(out.Endpoints.OpenClawPush, endpoints, "openclaw_messages_publish", "openclaw_publish", "openclawPush")
+	out.Endpoints.Offline = mergeEndpointString(out.Endpoints.Offline, endpoints, "openclaw_offline", "offline", "openclawOffline")
 }
 
-func extractStringFromAny(value any, keys ...string) string {
-	var out string
-	visitAny(value, func(entry map[string]any) bool {
-		out = support.StringFromMap(entry, keys...)
-		return out != ""
-	})
-	return out
+func mergePayloadString(current string, payload any, keys ...string) string {
+	return support.FirstNonEmptyString(strings.TrimSpace(current), support.StringFromAny(payload, keys...))
 }
 
-func extractMapByKey(value any, key string) map[string]any {
-	var out map[string]any
-	visitAny(value, func(entry map[string]any) bool {
-		found, ok := entry[key].(map[string]any)
-		if !ok || len(found) == 0 {
-			return false
-		}
-		out = found
-		return true
-	})
-	return out
-}
-
-func visitAny(value any, visit func(map[string]any) bool) bool {
-	switch typed := value.(type) {
-	case map[string]any:
-		if visit(typed) {
-			return true
-		}
-		for _, nestedKey := range []string{"data", "result", "agent", "payload"} {
-			if nested, ok := typed[nestedKey]; ok {
-				if visitAny(nested, visit) {
-					return true
-				}
-			}
-		}
-		for _, nested := range typed {
-			if visitAny(nested, visit) {
-				return true
-			}
-		}
-	case []any:
-		for _, entry := range typed {
-			if visitAny(entry, visit) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func firstNonEmptyString(values ...string) string {
-	return support.FirstNonEmptyString(values...)
+func mergeEndpointString(current string, endpoints map[string]any, keys ...string) string {
+	return support.FirstNonEmptyString(strings.TrimSpace(current), support.StringFromMap(endpoints, keys...))
 }
 
 func hubPingURL(baseURL string) (string, error) {

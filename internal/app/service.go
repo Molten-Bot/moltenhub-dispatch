@@ -151,6 +151,39 @@ func (s *Service) syncHubClient(state AppState) {
 	s.configureHubClient(state)
 }
 
+func (s *Service) refreshConfiguredState() AppState {
+	state := s.store.Snapshot()
+	s.settings = state.Settings
+	s.syncHubClient(state)
+	return state
+}
+
+func (s *Service) storeConnectedSession(runtime HubRuntime, session Session) error {
+	now := time.Now().UTC()
+	if session.BoundAt.IsZero() {
+		session.BoundAt = now
+	}
+	session.HubURL = runtime.HubURL
+	session.APIBase = NormalizeHubEndpointURL(coalesceTrimmed(session.APIBase, session.BaseURL))
+	session.BaseURL = session.APIBase
+	session.OfflineMarked = false
+
+	return s.store.Update(func(state *AppState) error {
+		state.Settings.HubRegion = runtime.ID
+		state.Settings.HubURL = runtime.HubURL
+		state.Session = session
+		connectionBaseURL, connectionDomain := hubConnectionTarget(session.APIBase, runtime.HubURL)
+		state.Connection = ConnectionState{
+			Status:        ConnectionStatusConnected,
+			Transport:     ConnectionTransportConnected,
+			LastChangedAt: now,
+			BaseURL:       connectionBaseURL,
+			Domain:        connectionDomain,
+		}
+		return nil
+	})
+}
+
 func (s *Service) setHubBaseURL(baseURL string) {
 	baseURL = NormalizeHubEndpointURL(baseURL)
 	if baseURL == "" {
@@ -181,7 +214,7 @@ func (s *Service) BindAndRegister(ctx context.Context, profile BindProfile) erro
 		ProfileMarkdown: profile.ProfileMarkdown,
 	})
 	agentProfile.Handle = strings.TrimSpace(agentProfile.Handle)
-	mode := normalizeOnboardingMode(profile.AgentMode, profile.BindToken, profile.AgentToken)
+	mode := NormalizeOnboardingMode(profile.AgentMode, profile.BindToken, profile.AgentToken)
 	if mode == OnboardingModeExisting {
 		return s.connectExistingAgent(ctx, runtime, strings.TrimSpace(profile.AgentToken), agentProfile)
 	}
@@ -231,46 +264,29 @@ func (s *Service) BindAndRegister(ctx context.Context, profile BindProfile) erro
 		agentProfile.Handle = strings.TrimSpace(result.Handle)
 	}
 
-	if err := s.store.Update(func(state *AppState) error {
-		state.Settings.HubRegion = runtime.ID
-		state.Settings.HubURL = runtime.HubURL
-		state.Session = Session{
-			BoundAt:         time.Now().UTC(),
-			HubURL:          runtime.HubURL,
-			APIBase:         result.APIBase,
-			AgentToken:      result.AgentToken,
-			BaseURL:         result.APIBase,
-			BindToken:       result.AgentToken,
-			AgentUUID:       result.AgentUUID,
-			AgentURI:        result.AgentURI,
-			Handle:          agentProfile.Handle,
-			HandleFinalized: handleRequestedDuringBind,
-			DisplayName:     agentProfile.DisplayName,
-			Emoji:           agentProfile.Emoji,
-			ProfileBio:      agentProfile.ProfileMarkdown,
-			ManifestURL:     runtimeEndpoints.ManifestURL,
-			MetadataURL:     runtimeEndpoints.MetadataURL,
-			Capabilities:    runtimeEndpoints.CapabilitiesURL,
-			OpenClawPullURL: runtimeEndpoints.OpenClawPullURL,
-			OpenClawPushURL: runtimeEndpoints.OpenClawPushURL,
-			OfflineURL:      runtimeEndpoints.OpenClawOfflineURL,
-			OfflineMarked:   false,
-		}
-		connectionBaseURL, connectionDomain := hubConnectionTarget(result.APIBase, runtime.HubURL)
-		state.Connection = ConnectionState{
-			Status:        ConnectionStatusConnected,
-			Transport:     ConnectionTransportConnected,
-			LastChangedAt: time.Now().UTC(),
-			BaseURL:       connectionBaseURL,
-			Domain:        connectionDomain,
-		}
-		return nil
+	if err := s.storeConnectedSession(runtime, Session{
+		BoundAt:         time.Now().UTC(),
+		APIBase:         result.APIBase,
+		AgentToken:      result.AgentToken,
+		BaseURL:         result.APIBase,
+		BindToken:       result.AgentToken,
+		AgentUUID:       result.AgentUUID,
+		AgentURI:        result.AgentURI,
+		Handle:          agentProfile.Handle,
+		HandleFinalized: handleRequestedDuringBind,
+		DisplayName:     agentProfile.DisplayName,
+		Emoji:           agentProfile.Emoji,
+		ProfileBio:      agentProfile.ProfileMarkdown,
+		ManifestURL:     runtimeEndpoints.ManifestURL,
+		MetadataURL:     runtimeEndpoints.MetadataURL,
+		Capabilities:    runtimeEndpoints.CapabilitiesURL,
+		OpenClawPullURL: runtimeEndpoints.OpenClawPullURL,
+		OpenClawPushURL: runtimeEndpoints.OpenClawPushURL,
+		OfflineURL:      runtimeEndpoints.OpenClawOfflineURL,
 	}); err != nil {
 		return WrapOnboardingError(OnboardingStepBind, err)
 	}
-	updatedState := s.store.Snapshot()
-	s.settings = updatedState.Settings
-	s.syncHubClient(updatedState)
+	s.refreshConfiguredState()
 	if _, err := s.hub.GetCapabilities(ctx, result.AgentToken); err != nil {
 		s.noteHubInteraction(err, ConnectionTransportHTTP)
 		return WrapOnboardingError(OnboardingStepWorkBind, fmt.Errorf("agent bound, but credential verification failed: %w", err))
@@ -320,41 +336,24 @@ func (s *Service) connectExistingAgent(ctx context.Context, runtime HubRuntime, 
 	s.noteHubInteraction(nil, ConnectionTransportHTTP)
 
 	identity := existingAgentIdentityFromCapabilities(capabilities)
-	if err := s.store.Update(func(state *AppState) error {
-		state.Settings.HubRegion = runtime.ID
-		state.Settings.HubURL = runtime.HubURL
-		state.Session = Session{
-			BoundAt:         time.Now().UTC(),
-			HubURL:          runtime.HubURL,
-			APIBase:         apiBase,
-			AgentToken:      agentToken,
-			BaseURL:         apiBase,
-			BindToken:       agentToken,
-			AgentUUID:       identity.AgentUUID,
-			AgentURI:        identity.AgentURI,
-			Handle:          identity.Handle,
-			HandleFinalized: identity.Handle != "",
-			DisplayName:     coalesceTrimmed(profile.DisplayName, identity.DisplayName),
-			Emoji:           coalesceTrimmed(profile.Emoji, identity.Emoji),
-			ProfileBio:      coalesceTrimmed(profile.ProfileMarkdown, identity.ProfileMarkdown),
-			OfflineMarked:   false,
-		}
-		connectionBaseURL, connectionDomain := hubConnectionTarget(apiBase, runtime.HubURL)
-		state.Connection = ConnectionState{
-			Status:        ConnectionStatusConnected,
-			Transport:     ConnectionTransportConnected,
-			LastChangedAt: time.Now().UTC(),
-			BaseURL:       connectionBaseURL,
-			Domain:        connectionDomain,
-		}
-		return nil
+	if err := s.storeConnectedSession(runtime, Session{
+		BoundAt:         time.Now().UTC(),
+		APIBase:         apiBase,
+		AgentToken:      agentToken,
+		BaseURL:         apiBase,
+		BindToken:       agentToken,
+		AgentUUID:       identity.AgentUUID,
+		AgentURI:        identity.AgentURI,
+		Handle:          identity.Handle,
+		HandleFinalized: identity.Handle != "",
+		DisplayName:     coalesceTrimmed(profile.DisplayName, identity.DisplayName),
+		Emoji:           coalesceTrimmed(profile.Emoji, identity.Emoji),
+		ProfileBio:      coalesceTrimmed(profile.ProfileMarkdown, identity.ProfileMarkdown),
 	}); err != nil {
 		return WrapOnboardingError(OnboardingStepBind, err)
 	}
 
-	updatedState := s.store.Snapshot()
-	s.settings = updatedState.Settings
-	s.syncHubClient(updatedState)
+	updatedState := s.refreshConfiguredState()
 
 	if err := s.updateAgentProfile(ctx, agentToken, profile); err != nil {
 		s.noteHubInteraction(err, ConnectionTransportHTTP)
@@ -2084,20 +2083,6 @@ func normalizePresenceTransport(transport string) string {
 	default:
 		return ConnectionTransportHTTP
 	}
-}
-
-func normalizeOnboardingMode(mode, bindToken, agentToken string) string {
-	mode = strings.ToLower(strings.TrimSpace(mode))
-	switch mode {
-	case OnboardingModeNew:
-		return OnboardingModeNew
-	case OnboardingModeExisting:
-		return OnboardingModeExisting
-	}
-	if strings.TrimSpace(bindToken) != "" && strings.TrimSpace(agentToken) == "" {
-		return OnboardingModeNew
-	}
-	return OnboardingModeExisting
 }
 
 func runtimeEndpointsFromBind(result hub.BindResponse) hub.RuntimeEndpoints {

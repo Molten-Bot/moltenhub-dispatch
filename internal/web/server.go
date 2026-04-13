@@ -235,7 +235,7 @@ func (s *Server) handleOnboarding(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	mode := normalizedOnboardingMode(payload.AgentMode, payload.BindToken, payload.AgentToken)
+	mode := app.NormalizeOnboardingMode(payload.AgentMode, payload.BindToken, payload.AgentToken)
 	if err := s.applyRuntimeSelection(payload.HubRegion); err != nil {
 		state := s.service.Snapshot()
 		onboarding := onboardingViewFromError(mode, state, app.WrapOnboardingError(app.OnboardingStepBind, err))
@@ -338,19 +338,7 @@ func (s *Server) handleDispatch(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	values, err := parseFormValues(r)
-	if err != nil {
-		s.redirectWithMessage(w, r, "error", err.Error())
-		return
-	}
-	dispatchReq, err := dispatchRequestFromValues(values)
-	if err != nil {
-		s.redirectWithMessage(w, r, "error", err.Error())
-		return
-	}
-	dispatchReq.RequestID = app.NewID("ui")
-
-	task, err := s.service.DispatchFromUI(r.Context(), dispatchReq)
+	task, err := s.dispatchTaskFromRequest(r)
 	if err != nil {
 		s.redirectWithMessage(w, r, "error", err.Error())
 		return
@@ -364,25 +352,7 @@ func (s *Server) handleDispatchAPI(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	values, err := parseFormValues(r)
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]any{
-			"ok":    false,
-			"error": err.Error(),
-		})
-		return
-	}
-	dispatchReq, err := dispatchRequestFromValues(values)
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]any{
-			"ok":    false,
-			"error": err.Error(),
-		})
-		return
-	}
-	dispatchReq.RequestID = app.NewID("ui")
-
-	task, err := s.service.DispatchFromUI(r.Context(), dispatchReq)
+	task, err := s.dispatchTaskFromRequest(r)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{
 			"ok":    false,
@@ -459,6 +429,19 @@ func parseFormValues(r *http.Request) (url.Values, error) {
 		return nil, err
 	}
 	return r.Form, nil
+}
+
+func (s *Server) dispatchTaskFromRequest(r *http.Request) (app.PendingTask, error) {
+	values, err := parseFormValues(r)
+	if err != nil {
+		return app.PendingTask{}, err
+	}
+	dispatchReq, err := dispatchRequestFromValues(values)
+	if err != nil {
+		return app.PendingTask{}, err
+	}
+	dispatchReq.RequestID = app.NewID("ui")
+	return s.service.DispatchFromUI(r.Context(), dispatchReq)
 }
 
 func decodeStructuredJSONPayload(raw string) (any, bool) {
@@ -739,16 +722,16 @@ func connectionStatusView(appState app.AppState) connectionView {
 		view.Description = fmt.Sprintf("Connected to %s (transport pending)", fallbackTarget(target))
 	case transport == app.ConnectionTransportReachable:
 		view.Label = "Connecting"
-		view.Description = firstNonEmpty(detail, fmt.Sprintf("Hub endpoint is live at %s. Connecting...", fallbackTarget(target)))
+		view.Description = support.FirstNonEmptyString(detail, fmt.Sprintf("Hub endpoint is live at %s. Connecting...", fallbackTarget(target)))
 	case transport == app.ConnectionTransportRetrying:
 		view.Label = "Retrying"
-		view.Description = firstNonEmpty(detail, fmt.Sprintf("Hub endpoint is waking up at %s. Retrying ping every 12s.", fallbackTarget(target)))
+		view.Description = support.FirstNonEmptyString(detail, fmt.Sprintf("Hub endpoint is waking up at %s. Retrying ping every 12s.", fallbackTarget(target)))
 	case target != "":
 		view.Label = "Disconnected"
-		view.Description = firstNonEmpty(detail, fmt.Sprintf("Disconnected from %s", target))
+		view.Description = support.FirstNonEmptyString(detail, fmt.Sprintf("Disconnected from %s", target))
 	case view.Error != "" || detail != "":
 		view.Label = "Error"
-		view.Description = firstNonEmpty(detail, view.Error)
+		view.Description = support.FirstNonEmptyString(detail, view.Error)
 	case strings.TrimSpace(appState.Session.AgentToken) != "":
 		view.Label = "Disconnected"
 		view.Description = "Configured locally. Restart runtime to connect."
@@ -765,15 +748,6 @@ func fallbackTarget(target string) string {
 		return "hub"
 	}
 	return target
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if trimmed := strings.TrimSpace(value); trimmed != "" {
-			return trimmed
-		}
-	}
-	return ""
 }
 
 func subActionState(state app.AppState) subActionView {
@@ -862,28 +836,11 @@ func defaultOnboardingSteps(mode string) []onboardingStepView {
 }
 
 func onboardingModeForState(state app.AppState) string {
-	if strings.TrimSpace(state.Session.AgentToken) != "" {
-		return app.OnboardingModeExisting
-	}
-	return app.OnboardingModeExisting
-}
-
-func normalizedOnboardingMode(mode, bindToken, agentToken string) string {
-	mode = strings.ToLower(strings.TrimSpace(mode))
-	switch mode {
-	case app.OnboardingModeNew:
-		return app.OnboardingModeNew
-	case app.OnboardingModeExisting:
-		return app.OnboardingModeExisting
-	}
-	if strings.TrimSpace(bindToken) != "" && strings.TrimSpace(agentToken) == "" {
-		return app.OnboardingModeNew
-	}
 	return app.OnboardingModeExisting
 }
 
 func onboardingSuccessMessage(mode string) string {
-	if normalizedOnboardingMode(mode, "", "") == app.OnboardingModeExisting {
+	if app.NormalizeOnboardingMode(mode, "", "") == app.OnboardingModeExisting {
 		return "Existing agent connected and profile registered."
 	}
 	return "Agent bound and profile registered."
