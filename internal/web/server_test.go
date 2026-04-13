@@ -2057,6 +2057,9 @@ func TestHandleIndexRendersConnectedAgentsRefreshPanel(t *testing.T) {
 	if !strings.Contains(body, `id="manual-dispatch-targets"`) {
 		t.Fatalf("expected manual dispatch connected agent target list, body=%s", body)
 	}
+	if strings.Contains(body, "Choose one of the connected agents below.") {
+		t.Fatalf("did not expect removed connected-agent hint copy, body=%s", body)
+	}
 	if !strings.Contains(body, `class="list connected-agents-list connected-agents-list-selectable manual-dispatch-targets-grid"`) {
 		t.Fatalf("expected manual dispatch target grid class for horizontal fill layout, body=%s", body)
 	}
