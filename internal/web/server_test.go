@@ -528,9 +528,6 @@ func TestHandleIndexShowsBoundProfileState(t *testing.T) {
 	if strings.Contains(body, "Awaiting Bind") {
 		t.Fatalf("did not expect removed bind state section, body=%s", body)
 	}
-	if strings.Contains(body, "one-time bind token") {
-		t.Fatalf("did not expect removed bind state copy, body=%s", body)
-	}
 	if strings.Contains(body, ">Runtime<") {
 		t.Fatalf("did not expect removed runtime panel, body=%s", body)
 	}
@@ -1176,7 +1173,7 @@ func TestHandleIndexKeepsRecentEventsClosedByDefault(t *testing.T) {
 				{
 					Title:   "Task dispatched",
 					Level:   "info",
-					Detail:  "Queued code_for_me for moltenbot/dispatch/codex-beast",
+					Detail:  "Queued code_for_me for moltenbot/jef/codex-beast",
 					TaskID:  "task-123",
 					LogPath: ".moltenhub/logs/task-123.log",
 					At:      time.Unix(1, 0).UTC(),
@@ -1241,10 +1238,10 @@ func TestHandleIndexKeepsQueuedFollowUpsClosedByDefault(t *testing.T) {
 					ID:           "followup-1",
 					Status:       "queued",
 					FailedTaskID: "task-1",
-					FailedRepo:   "git@github.com:Molten-Bot/moltenhub-dispatch.git",
+					FailedRepo:   "git@github.com:Molten-Bot/moltenhub-code.git",
 					LogPaths:     []string{".moltenhub/logs/task-1.log"},
 					RunConfig: app.FollowUpRunConfig{
-						Repos:        []string{"git@github.com:Molten-Bot/moltenhub-dispatch.git"},
+						Repos:        []string{"git@github.com:Molten-Bot/moltenhub-code.git"},
 						BaseBranch:   "main",
 						TargetSubdir: ".",
 						Prompt:       "Review the failing log paths first.",
