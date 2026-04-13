@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"io/fs"
 	"net/http"
 	"net/url"
 	"strings"
@@ -16,7 +17,7 @@ import (
 	"github.com/moltenbot000/moltenhub-dispatch/internal/support"
 )
 
-//go:embed templates/index.html static/styles.css
+//go:embed templates/index.html static
 var assets embed.FS
 
 type service interface {
@@ -32,9 +33,10 @@ type service interface {
 }
 
 type Server struct {
-	service   service
-	templates *template.Template
-	mux       *http.ServeMux
+	service       service
+	templates     *template.Template
+	mux           *http.ServeMux
+	staticHandler http.Handler
 }
 
 func New(service service) (*Server, error) {
@@ -56,11 +58,16 @@ func New(service service) (*Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse templates: %w", err)
 	}
+	staticAssets, err := fs.Sub(assets, "static")
+	if err != nil {
+		return nil, fmt.Errorf("prepare static assets: %w", err)
+	}
 
 	server := &Server{
-		service:   service,
-		templates: templates,
-		mux:       http.NewServeMux(),
+		service:       service,
+		templates:     templates,
+		mux:           http.NewServeMux(),
+		staticHandler: http.StripPrefix("/static/", http.FileServer(http.FS(staticAssets))),
 	}
 	server.routes()
 	return server, nil
@@ -81,6 +88,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/dispatch", s.handleDispatch)
 	s.mux.HandleFunc("/settings", s.handleSettings)
 	s.mux.HandleFunc("/styles.css", s.handleStyles)
+	s.mux.Handle("/static/", s.staticHandler)
 }
 
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
