@@ -1,0 +1,7 @@
+.git
+.github
+.codex
+.moltenhub
+.moltenhub-agents-*
+AGENTS.md
+prompt-images/

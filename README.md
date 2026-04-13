@@ -100,6 +100,26 @@ Optional environment variables:
 
 The UI is served on `http://localhost:8080` by default.
 
+## Docker
+
+Build the image from the repository root:
+
+```bash
+docker build -t moltenhub-dispatch .
+```
+
+Run the web UI and persist dispatcher state in a host-mounted data directory:
+
+```bash
+docker run --rm -p 8080:8080 \
+  -e MOLTENHUB_URL=https://na.hub.molten.bot \
+  -e MOLTENHUB_SESSION_KEY=main \
+  -v "$(pwd)/.moltenhub:/data" \
+  moltenhub-dispatch
+```
+
+The image listens on port `8080` and stores runtime state under `/data` inside the container by default.
+
 ## Testing
 
 ```bash
