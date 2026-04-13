@@ -519,6 +519,9 @@ func TestHandleIndexShowsBoundProfileState(t *testing.T) {
 	if !strings.Contains(body, `class="grid manual-dispatch-grid"`) {
 		t.Fatalf("expected manual dispatch section to render full-width grid class, body=%s", body)
 	}
+	if !strings.Contains(body, `id="manual-dispatch-form"`) {
+		t.Fatalf("expected manual dispatch form id for async submit handling, body=%s", body)
+	}
 	if !strings.Contains(body, `class="manual-dispatch-actions"`) {
 		t.Fatalf("expected manual dispatch submit action wrapper, body=%s", body)
 	}
@@ -542,6 +545,18 @@ func TestHandleIndexShowsBoundProfileState(t *testing.T) {
 	}
 	if !strings.Contains(body, `class="dispatch-task-button prompt-action-button"`) {
 		t.Fatalf("expected dispatch task button to use action button class, body=%s", body)
+	}
+	if !strings.Contains(body, `id="dispatch-task-submit"`) {
+		t.Fatalf("expected dispatch submit button id for async submit handling, body=%s", body)
+	}
+	if !strings.Contains(body, `id="dispatch-submit-status" class="connected-agents-refresh-status"`) {
+		t.Fatalf("expected inline dispatch status region for async dispatch feedback, body=%s", body)
+	}
+	if !strings.Contains(body, `await fetch("/api/dispatch"`) {
+		t.Fatalf("expected manual dispatch async API submit hook, body=%s", body)
+	}
+	if !strings.Contains(body, `skillPayloadInput.value = "";`) {
+		t.Fatalf("expected async submit success path to clear payload input, body=%s", body)
 	}
 	if !strings.Contains(body, `id="sub-actions-notice" class="panel" hidden`) {
 		t.Fatalf("expected sub-action notice to be hidden when bound and connected, body=%s", body)
@@ -585,6 +600,51 @@ func TestHandleDispatchAcceptsMinimalTargetOnlyForm(t *testing.T) {
 	}
 	if got := stub.state.Flash; got.Level != "info" || got.Message != "Dispatched task task-1" {
 		t.Fatalf("unexpected flash after dispatch: %#v", got)
+	}
+}
+
+func TestHandleDispatchAPIAcceptsMinimalTargetOnlyForm(t *testing.T) {
+	t.Parallel()
+
+	stub := &stubService{
+		dispatchTask: app.PendingTask{ID: "task-1"},
+	}
+	server, err := New(stub)
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/dispatch", strings.NewReader("target_agent_ref=worker-a"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 response, got %d", rec.Code)
+	}
+
+	var body struct {
+		OK      bool   `json:"ok"`
+		TaskID  string `json:"task_id"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !body.OK {
+		t.Fatalf("expected success response, got %#v", body)
+	}
+	if body.TaskID != "task-1" {
+		t.Fatalf("expected task_id, got %#v", body)
+	}
+	if body.Message != "Dispatched task task-1" {
+		t.Fatalf("unexpected response message: %#v", body)
+	}
+	if got := stub.lastDispatchReq.TargetAgentRef; got != "worker-a" {
+		t.Fatalf("unexpected target agent ref: %#v", stub.lastDispatchReq)
+	}
+	if got := stub.lastDispatchReq.PayloadFormat; got != "" {
+		t.Fatalf("expected empty payload format for target-only dispatch, got %#v", stub.lastDispatchReq)
 	}
 }
 
@@ -706,6 +766,43 @@ func TestHandleDispatchRejectsUnknownPayloadFormat(t *testing.T) {
 	}
 	if got := stub.state.Flash.Message; got != "payload_format must be one of markdown or json" {
 		t.Fatalf("unexpected error flash message: %#v", got)
+	}
+}
+
+func TestHandleDispatchAPIRejectsUnknownPayloadFormat(t *testing.T) {
+	t.Parallel()
+
+	stub := &stubService{}
+	server, err := New(stub)
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+
+	form := "target_agent_ref=worker-a&skill_name=run_task&payload_format=xml&payload=%3Ctask%2F%3E"
+	req := httptest.NewRequest(http.MethodPost, "/api/dispatch", strings.NewReader(form))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 response, got %d", rec.Code)
+	}
+
+	var body struct {
+		OK    bool   `json:"ok"`
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.OK {
+		t.Fatalf("expected failure response, got %#v", body)
+	}
+	if body.Error != "payload_format must be one of markdown or json" {
+		t.Fatalf("unexpected API error message: %#v", body)
+	}
+	if stub.state.Flash != (app.FlashMessage{}) {
+		t.Fatalf("did not expect flash mutation for API failures, got %#v", stub.state.Flash)
 	}
 }
 
