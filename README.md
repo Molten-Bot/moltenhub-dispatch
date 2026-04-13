@@ -32,6 +32,8 @@ Key integration points:
   Releases messages when local processing fails.
 - `POST /v1/openclaw/messages/offline`
   Marks the runtime offline during shutdown and after task failures, matching the hub’s presence contract in the NA/EU OpenAPI spec.
+- `GET /v1/openclaw/messages/ws`
+  Preferred realtime transport. When the WebSocket handshake or session drops, the dispatcher keeps the hub in a reachable/connecting state locally and falls back to HTTP long polling instead of marking the runtime offline unless an explicit offline action or a real hub reachability failure occurs.
 
 Dispatch activation accepts the generic OpenClaw `input` envelope as well as `payload`. Callers can target a connected agent with a single `target_agent_ref` field and omit `repo`, `log_paths`, `payload`, and timeout fields unless the downstream skill actually needs them. Stringified JSON activation payloads are also accepted so hub-driven skill forms do not need to pre-expand every optional field.
 

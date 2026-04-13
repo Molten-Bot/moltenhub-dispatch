@@ -2053,6 +2053,36 @@ func TestWaitForHubReachableRetriesPingUntilLive(t *testing.T) {
 	}
 }
 
+func TestNoteRealtimeFallbackKeepsHubReachableWhileWebsocketFallsBack(t *testing.T) {
+	t.Parallel()
+
+	service, _ := newTestService(t)
+	err := service.store.Update(func(state *AppState) error {
+		state.Session.AgentToken = "agent-token"
+		state.Session.APIBase = "https://na.hub.molten.bot/v1"
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("seed store: %v", err)
+	}
+
+	service.noteRealtimeFallback(errors.New("websocket unavailable"))
+
+	state := service.store.Snapshot()
+	if state.Connection.Status != ConnectionStatusDisconnected {
+		t.Fatalf("expected disconnected status during fallback, got %#v", state.Connection)
+	}
+	if state.Connection.Transport != ConnectionTransportReachable {
+		t.Fatalf("expected reachable transport during fallback, got %#v", state.Connection)
+	}
+	if state.Connection.Error != "websocket unavailable" {
+		t.Fatalf("unexpected websocket fallback error: %#v", state.Connection)
+	}
+	if !strings.Contains(state.Connection.Detail, "falling back to HTTP long polling") {
+		t.Fatalf("unexpected websocket fallback detail: %#v", state.Connection)
+	}
+}
+
 func TestRunHubLoopFallsBackToHTTPLongPollWhenWebsocketUnavailable(t *testing.T) {
 	t.Parallel()
 
@@ -2107,6 +2137,9 @@ func TestRunHubLoopFallsBackToHTTPLongPollWhenWebsocketUnavailable(t *testing.T)
 	}
 	if state.Connection.Transport != ConnectionTransportHTTPLong {
 		t.Fatalf("expected http long-poll transport after websocket fallback, got %#v", state.Connection)
+	}
+	if state.Connection.Error != "" {
+		t.Fatalf("expected successful HTTP fallback to clear connection error, got %#v", state.Connection)
 	}
 }
 

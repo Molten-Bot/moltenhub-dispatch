@@ -499,7 +499,7 @@ func (s *Service) RunHubLoop(ctx context.Context) {
 					continue
 				}
 			}
-			s.noteHubInteraction(err, ConnectionTransportWebSocket)
+			s.noteRealtimeFallback(err)
 			if err := s.runHTTPFallbackWindow(ctx); err != nil {
 				return
 			}
@@ -608,6 +608,28 @@ func (s *Service) noteHubPingReachable(detail string) {
 			Transport:     ConnectionTransportReachable,
 			LastChangedAt: now,
 			Detail:        strings.TrimSpace(detail),
+			BaseURL:       baseURL,
+			Domain:        domain,
+		}
+		state.Session.OfflineMarked = false
+		return nil
+	})
+}
+
+func (s *Service) noteRealtimeFallback(err error) {
+	now := time.Now().UTC()
+	_ = s.store.Update(func(state *AppState) error {
+		baseURL, domain := hubConnectionTarget(state.Session.APIBase, state.Settings.HubURL)
+		detail := "WebSocket unavailable; falling back to HTTP long polling."
+		if err != nil {
+			detail = fmt.Sprintf("%s Error: %s", detail, strings.TrimSpace(err.Error()))
+		}
+		state.Connection = ConnectionState{
+			Status:        ConnectionStatusDisconnected,
+			Transport:     ConnectionTransportReachable,
+			LastChangedAt: now,
+			Error:         strings.TrimSpace(errorString(err)),
+			Detail:        detail,
 			BaseURL:       baseURL,
 			Domain:        domain,
 		}
@@ -1394,6 +1416,13 @@ func errorDetail(err error) any {
 			detail["error_detail"] = apiErr.Detail
 		}
 		return detail
+	}
+	return err.Error()
+}
+
+func errorString(err error) string {
+	if err == nil {
+		return ""
 	}
 	return err.Error()
 }
