@@ -1413,14 +1413,17 @@ func TestHandleIndexRendersConnectedAgentsRefreshPanel(t *testing.T) {
 	if !strings.Contains(body, "@dispatcher") {
 		t.Fatalf("expected handle fallback on connected agent cards, body=%s", body)
 	}
-	if !strings.Contains(body, `list="connected-agent-target-options"`) {
-		t.Fatalf("expected manual dispatch target agent selector to use connected agent options, body=%s", body)
+	if !strings.Contains(body, `id="target-agent-ref-input"`) {
+		t.Fatalf("expected hidden target agent ref input for card selection UI, body=%s", body)
 	}
-	if !strings.Contains(body, `<datalist id="connected-agent-target-options">`) {
-		t.Fatalf("expected connected agent datalist for manual dispatch, body=%s", body)
+	if !strings.Contains(body, `id="manual-dispatch-targets"`) {
+		t.Fatalf("expected manual dispatch connected agent target list, body=%s", body)
 	}
-	if !strings.Contains(body, `value="Dispatcher"`) {
-		t.Fatalf("expected connected agent display name in dispatch selector, body=%s", body)
+	if !strings.Contains(body, `data-connected-agent-target-ref="dispatcher"`) {
+		t.Fatalf("expected connected agent target ref on selectable card, body=%s", body)
+	}
+	if !strings.Contains(body, `data-connected-agent-display="Dispatcher"`) {
+		t.Fatalf("expected connected agent display name in selectable card, body=%s", body)
 	}
 	if strings.Contains(body, "PERSONAL · YOU") {
 		t.Fatalf("did not expect invalid personal-context badge in connected agent card, body=%s", body)
@@ -1430,6 +1433,12 @@ func TestHandleIndexRendersConnectedAgentsRefreshPanel(t *testing.T) {
 	}
 	if !strings.Contains(body, `const scheduleConnectedAgentsAutoRefresh = (delayMs = CONNECTED_AGENTS_REFRESH_INTERVAL_MS) => {`) {
 		t.Fatalf("expected connected agents auto-refresh scheduler, body=%s", body)
+	}
+	if !strings.Contains(body, `const syncConnectedAgentSelection = () => {`) {
+		t.Fatalf("expected connected agent card selection sync helper, body=%s", body)
+	}
+	if !strings.Contains(body, `const selectConnectedAgentTarget = (targetRef) => {`) {
+		t.Fatalf("expected connected agent selector click handler, body=%s", body)
 	}
 	if !strings.Contains(body, `const connectedAgentsRefreshButtons = Array.from(document.querySelectorAll("[data-connected-agents-refresh-button]"));`) {
 		t.Fatalf("expected shared manual refresh button hooks, body=%s", body)

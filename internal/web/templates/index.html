@@ -101,21 +101,31 @@
         <article class="panel">
           <h2>Manual Dispatch</h2>
           <form method="post" action="/dispatch" class="stack">
-            <label>Target Agent Ref
-              <input
-                name="target_agent_ref"
-                list="connected-agent-target-options"
-                placeholder="Select a connected agent display"
-              >
-            </label>
-            <datalist id="connected-agent-target-options">
+            <input id="target-agent-ref-input" type="hidden" name="target_agent_ref">
+            <fieldset class="manual-dispatch-target-fieldset">
+              <legend>Target Agent Ref</legend>
+              <p class="manual-dispatch-target-hint">Choose one of the connected agents below.</p>
+              <div id="manual-dispatch-targets" class="list connected-agents-list connected-agents-list-selectable">
               {{range .State.ConnectedAgents}}
-              <option
-                value="{{if .Name}}{{.Name}}{{else if .ID}}{{.ID}}{{else if .AgentUUID}}{{.AgentUUID}}{{else if .AgentURI}}{{.AgentURI}}{{end}}"
-                label="{{if .ID}}@{{.ID}}{{else if .AgentUUID}}{{.AgentUUID}}{{else if .AgentURI}}{{.AgentURI}}{{else}}unknown{{end}}"
-              ></option>
+              <button
+                type="button"
+                class="connected-agent-card connected-agent-card-button"
+                data-connected-agent-target-ref="{{if .ID}}{{.ID}}{{else if .AgentUUID}}{{.AgentUUID}}{{else if .AgentURI}}{{.AgentURI}}{{else if .Name}}{{.Name}}{{end}}"
+                data-connected-agent-display="{{if .Name}}{{.Name}}{{else if .ID}}{{.ID}}{{else if .AgentUUID}}{{.AgentUUID}}{{else if .AgentURI}}{{.AgentURI}}{{else}}Unknown agent{{end}}"
+                aria-pressed="false"
+              >
+                <div class="connected-agent-card-main">
+                  <span class="connected-agent-avatar" aria-hidden="true">{{if .Emoji}}{{.Emoji}}{{else}}🤖{{end}}</span>
+                  <div class="connected-agent-card-copy">
+                    <h3>{{if .Name}}{{.Name}}{{else if .ID}}{{.ID}}{{else if .AgentUUID}}{{.AgentUUID}}{{else if .AgentURI}}{{.AgentURI}}{{else}}Unknown agent{{end}}</h3>
+                    <p class="connected-agent-handle">{{if .ID}}@{{.ID}}{{else if .AgentUUID}}{{.AgentUUID}}{{else if .AgentURI}}{{.AgentURI}}{{else}}unknown{{end}}</p>
+                  </div>
+                  <span class="connected-agent-selection-badge" aria-hidden="true">Selected</span>
+                </div>
+              </button>
               {{end}}
-            </datalist>
+              </div>
+            </fieldset>
             <label>Skill Name<input name="skill_name" placeholder="Optional when the target agent has a default skill"></label>
             <div class="manual-dispatch-actions">
               <button type="submit" class="dispatch-task-button prompt-action-button">Dispatch Task</button>
@@ -444,9 +454,10 @@
       const hubConnText = document.getElementById("hub-conn-text");
       const subActions = document.getElementById("sub-actions");
       const subActionsNotice = document.getElementById("sub-actions-notice");
+      const manualDispatchTargets = document.getElementById("manual-dispatch-targets");
+      const targetAgentRefInput = document.getElementById("target-agent-ref-input");
       const connectedAgentsList = document.getElementById("connected-agents-list");
       const connectedAgentsEmpty = document.getElementById("connected-agents-empty");
-      const connectedAgentTargetOptions = document.getElementById("connected-agent-target-options");
       const connectedAgentsRefreshButtons = Array.from(document.querySelectorAll("[data-connected-agents-refresh-button]"));
       const connectedAgentsRefreshStatusNodes = Array.from(document.querySelectorAll("[data-connected-agents-refresh-status]"));
       const connectedAgentsRefreshProgressNodes = Array.from(document.querySelectorAll("[data-connected-agents-refresh-progress]"));
@@ -1420,11 +1431,7 @@
         return "unknown";
       };
 
-      const connectedAgentTargetValue = (agent) => {
-        const displayName = trimmedString(agent && agent.name);
-        if (displayName) {
-          return displayName;
-        }
+      const connectedAgentTargetRef = (agent) => {
         const handle = trimmedString(agent && agent.id);
         if (handle) {
           return handle;
@@ -1440,22 +1447,28 @@
         return "";
       };
 
-      const renderConnectedAgentTargetOptions = (agents) => {
-        if (!(connectedAgentTargetOptions instanceof HTMLDataListElement)) {
+      const syncConnectedAgentSelection = () => {
+        if (!(manualDispatchTargets instanceof HTMLElement) || !(targetAgentRefInput instanceof HTMLInputElement)) {
           return;
         }
-        connectedAgentTargetOptions.innerHTML = "";
-        const nextAgents = Array.isArray(agents) ? agents : [];
-        nextAgents.forEach((agent) => {
-          const value = connectedAgentTargetValue(agent);
-          if (!value) {
+        const selectedRef = trimmedString(targetAgentRefInput.value);
+        manualDispatchTargets.querySelectorAll("[data-connected-agent-target-ref]").forEach((node) => {
+          if (!(node instanceof HTMLButtonElement)) {
             return;
           }
-          const option = document.createElement("option");
-          option.value = value;
-          option.label = connectedAgentHandle(agent);
-          connectedAgentTargetOptions.appendChild(option);
+          const targetRef = trimmedString(node.dataset.connectedAgentTargetRef);
+          const selected = selectedRef !== "" && selectedRef === targetRef;
+          node.classList.toggle("is-selected", selected);
+          node.setAttribute("aria-pressed", selected ? "true" : "false");
         });
+      };
+
+      const selectConnectedAgentTarget = (targetRef) => {
+        if (!(targetAgentRefInput instanceof HTMLInputElement)) {
+          return;
+        }
+        targetAgentRefInput.value = trimmedString(targetRef);
+        syncConnectedAgentSelection();
       };
 
       const connectedAgentEmoji = (agent) => {
@@ -1464,6 +1477,85 @@
           return emoji;
         }
         return "🤖";
+      };
+
+      const buildConnectedAgentCard = (agent, selectable = false) => {
+        const card = document.createElement(selectable ? "button" : "article");
+        card.className = selectable
+          ? "connected-agent-card connected-agent-card-button"
+          : "connected-agent-card";
+
+        if (selectable) {
+          card.type = "button";
+          const targetRef = connectedAgentTargetRef(agent);
+          if (targetRef) {
+            card.dataset.connectedAgentTargetRef = targetRef;
+          }
+          card.dataset.connectedAgentDisplay = connectedAgentDisplayName(agent);
+          card.setAttribute("aria-pressed", "false");
+          card.addEventListener("click", () => {
+            selectConnectedAgentTarget(targetRef);
+          });
+        }
+
+        const cardMain = document.createElement("div");
+        cardMain.className = "connected-agent-card-main";
+
+        const avatar = document.createElement("span");
+        avatar.className = "connected-agent-avatar";
+        avatar.setAttribute("aria-hidden", "true");
+        avatar.textContent = connectedAgentEmoji(agent);
+
+        const copy = document.createElement("div");
+        copy.className = "connected-agent-card-copy";
+
+        const title = document.createElement("h3");
+        title.textContent = connectedAgentDisplayName(agent);
+
+        const handle = document.createElement("p");
+        handle.className = "connected-agent-handle";
+        handle.textContent = connectedAgentHandle(agent);
+
+        copy.appendChild(title);
+        copy.appendChild(handle);
+        cardMain.appendChild(avatar);
+        cardMain.appendChild(copy);
+
+        if (selectable) {
+          const badge = document.createElement("span");
+          badge.className = "connected-agent-selection-badge";
+          badge.setAttribute("aria-hidden", "true");
+          badge.textContent = "Selected";
+          cardMain.appendChild(badge);
+        }
+
+        card.appendChild(cardMain);
+        return card;
+      };
+
+      const renderManualDispatchTargets = (agents) => {
+        if (!(manualDispatchTargets instanceof HTMLElement)) {
+          return;
+        }
+        const nextAgents = Array.isArray(agents) ? agents : [];
+        const previousTargetRef = targetAgentRefInput instanceof HTMLInputElement
+          ? trimmedString(targetAgentRefInput.value)
+          : "";
+
+        manualDispatchTargets.innerHTML = "";
+        nextAgents.forEach((agent) => {
+          const targetRef = connectedAgentTargetRef(agent);
+          if (!targetRef) {
+            return;
+          }
+          manualDispatchTargets.appendChild(buildConnectedAgentCard(agent, true));
+        });
+
+        if (targetAgentRefInput instanceof HTMLInputElement) {
+          const targetStillExists = nextAgents.some((agent) => connectedAgentTargetRef(agent) === previousTargetRef);
+          targetAgentRefInput.value = targetStillExists ? previousTargetRef : "";
+        }
+        syncConnectedAgentSelection();
       };
 
       const renderConnectedAgents = (agents) => {
@@ -1475,7 +1567,7 @@
         if (shell instanceof HTMLElement) {
           shell.dataset.connectedAgentCount = String(connectedAgentsCount);
         }
-        renderConnectedAgentTargetOptions(nextAgents);
+        renderManualDispatchTargets(nextAgents);
         syncSubActions(latestHubConnectionState);
         connectedAgentsList.innerHTML = "";
         if (nextAgents.length === 0) {
@@ -1484,33 +1576,7 @@
           return;
         }
         nextAgents.forEach((agent) => {
-          const card = document.createElement("article");
-          card.className = "connected-agent-card";
-
-          const cardMain = document.createElement("div");
-          cardMain.className = "connected-agent-card-main";
-
-          const avatar = document.createElement("span");
-          avatar.className = "connected-agent-avatar";
-          avatar.setAttribute("aria-hidden", "true");
-          avatar.textContent = connectedAgentEmoji(agent);
-
-          const copy = document.createElement("div");
-          copy.className = "connected-agent-card-copy";
-
-          const title = document.createElement("h3");
-          title.textContent = connectedAgentDisplayName(agent);
-
-          const handle = document.createElement("p");
-          handle.className = "connected-agent-handle";
-          handle.textContent = connectedAgentHandle(agent);
-
-          copy.appendChild(title);
-          copy.appendChild(handle);
-          cardMain.appendChild(avatar);
-          cardMain.appendChild(copy);
-          card.appendChild(cardMain);
-          connectedAgentsList.appendChild(card);
+          connectedAgentsList.appendChild(buildConnectedAgentCard(agent, false));
         });
         connectedAgentsEmpty.hidden = true;
         connectedAgentsList.hidden = false;
@@ -1728,6 +1794,7 @@
           });
         }
       });
+      syncConnectedAgentSelection();
 
       setConnectedAgentsRefreshProgress(0);
       if (!bound) {

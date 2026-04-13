@@ -3534,6 +3534,17 @@ p,
   justify-content: flex-end;
 }
 
+.manual-dispatch-target-fieldset {
+  display: grid;
+  gap: 10px;
+}
+
+.manual-dispatch-target-hint {
+  margin: 0;
+  color: var(--meta);
+  font-size: 0.84rem;
+}
+
 label {
   display: grid;
   gap: 6px;
@@ -4025,12 +4036,40 @@ body.settings-modal-open {
   margin-top: 8px;
 }
 
+.connected-agents-list-selectable {
+  margin-top: 0;
+}
+
 .connected-agent-card {
   border: 1px solid color-mix(in srgb, var(--border) 85%, rgba(17, 34, 68, 0.16));
   border-radius: 14px;
   padding: 12px 14px;
   background: var(--surface-glass-strong);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+.connected-agent-card-button {
+  width: 100%;
+  justify-content: stretch;
+  padding: 12px 14px;
+  border-radius: 14px;
+  text-align: left;
+  background: var(--surface-glass-strong);
+  color: var(--text);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+.connected-agent-card-button:hover {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--running) 35%, var(--border));
+}
+
+.connected-agent-card-button.is-selected {
+  border-color: color-mix(in srgb, var(--running) 58%, rgba(17, 34, 68, 0.16));
+  background: color-mix(in srgb, var(--surface-glass-strong) 80%, rgba(10, 132, 255, 0.14));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.72),
+    0 0 0 1px color-mix(in srgb, var(--running) 18%, transparent);
 }
 
 .connected-agent-card-main {
@@ -4078,6 +4117,25 @@ body.settings-modal-open {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.connected-agent-selection-badge {
+  margin-left: auto;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--running) 16%, transparent);
+  color: var(--running);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.connected-agent-card-button.is-selected .connected-agent-selection-badge {
+  display: inline-flex;
 }
 
 .card {
