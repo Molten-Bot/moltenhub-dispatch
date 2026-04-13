@@ -27,6 +27,8 @@ type stubService struct {
 	lastDispatchReq   app.DispatchRequest
 	bindStateOnError  bool
 	lastBindProfile   app.BindProfile
+	lastFlashLevel    string
+	lastFlashMessage  string
 }
 
 func (s *stubService) Snapshot() app.AppState {
@@ -102,6 +104,8 @@ func (s *stubService) SetFlash(level, message string) error {
 		Level:   level,
 		Message: strings.TrimSpace(message),
 	}
+	s.lastFlashLevel = level
+	s.lastFlashMessage = strings.TrimSpace(message)
 	return nil
 }
 
@@ -243,6 +247,35 @@ func TestHandleOnboardingAPIReturnsSuccess(t *testing.T) {
 	}
 	if got, want := body.Onboarding.Steps[0].Detail, "Exchange the bind token for an agent credential."; got != want {
 		t.Fatalf("bind step detail = %q, want %q", got, want)
+	}
+}
+
+func TestHandleOnboardingAPISupportsExistingAgentFlow(t *testing.T) {
+	t.Parallel()
+
+	stub := &stubService{state: app.AppState{Settings: app.DefaultSettings()}}
+	server, err := New(stub)
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/onboarding", strings.NewReader(`{"agent_mode":"existing","agent_token":"agent-123","display_name":"Dispatch Agent"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 response, got %d", rec.Code)
+	}
+
+	if got := stub.lastBindProfile.AgentMode; got != app.OnboardingModeExisting {
+		t.Fatalf("agent mode = %q, want %q", got, app.OnboardingModeExisting)
+	}
+	if got := stub.lastBindProfile.AgentToken; got != "agent-123" {
+		t.Fatalf("agent token = %q, want %q", got, "agent-123")
+	}
+	if stub.lastFlashMessage != "Existing agent connected and profile registered." {
+		t.Fatalf("unexpected success flash: %q", stub.lastFlashMessage)
 	}
 }
 
@@ -1539,6 +1572,9 @@ func TestHandleIndexRendersInteractiveOnboardingFlowForUnboundSession(t *testing
 	if !strings.Contains(body, `id="onboarding-modal-backdrop"`) {
 		t.Fatalf("expected onboarding modal for unbound session, body=%s", body)
 	}
+	if !strings.Contains(body, `id="onboarding-existing-agent-toggle"`) || !strings.Contains(body, `id="onboarding-new-agent-toggle"`) {
+		t.Fatalf("expected existing/new agent mode toggles in onboarding modal, body=%s", body)
+	}
 	if !strings.Contains(body, `name="hub_region"`) {
 		t.Fatalf("expected runtime region selector in onboarding modal, body=%s", body)
 	}
@@ -1551,11 +1587,14 @@ func TestHandleIndexRendersInteractiveOnboardingFlowForUnboundSession(t *testing
 	if !strings.Contains(body, `onboarding-step onboarding-step-current" data-step-id="bind"`) {
 		t.Fatalf("expected bind step to render as current in unbound state, body=%s", body)
 	}
-	if !strings.Contains(body, "Exchange the bind token for an agent credential.") {
-		t.Fatalf("expected unbound onboarding bind detail to match hub flow, body=%s", body)
+	if !strings.Contains(body, "Verify the existing Molten Hub agent credential.") {
+		t.Fatalf("expected existing-agent onboarding bind detail to match hub flow, body=%s", body)
 	}
 	if !strings.Contains(body, "Persist the agent profile in Molten Hub.") {
 		t.Fatalf("expected unbound onboarding profile detail to match hub flow, body=%s", body)
+	}
+	if !strings.Contains(body, `id="onboarding-mode-field"`) || !strings.Contains(body, `id="onboarding-token-label"`) {
+		t.Fatalf("expected redesigned onboarding form fields, body=%s", body)
 	}
 }
 
