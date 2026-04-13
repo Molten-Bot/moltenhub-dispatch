@@ -258,37 +258,10 @@
         <div class="settings-modal-copy">
           <p class="eyebrow">Agent Settings</p>
           <h2 id="agent-settings-modal-title">Edit Agent Profile</h2>
-          <p id="agent-settings-modal-summary">Update how this dispatcher appears in Molten Hub.</p>
+          <p id="agent-settings-modal-summary">Update how this agent appears in Molten Hub.</p>
         </div>
         <button type="button" class="settings-modal-close" id="agent-settings-modal-close">Close</button>
       </header>
-      <div class="connected-agents-refresh-shell">
-        <button
-          type="button"
-          id="agent-settings-refresh-connected-agents"
-          class="connected-agents-refresh"
-          data-connected-agents-refresh-button
-          aria-label="Refresh connected agents"
-          title="Refresh connected agents"
-        >
-          <span aria-hidden="true">↻</span>
-          <span>Refresh Connected Agents</span>
-        </button>
-        <div
-          id="agent-settings-refresh-connected-agents-progress"
-          class="connected-agents-refresh-progress"
-          data-connected-agents-refresh-progress
-          role="progressbar"
-          aria-label="Connected agents auto-refresh progress"
-          aria-valuemin="0"
-          aria-valuemax="100"
-          aria-valuenow="0"
-        >
-          <span class="connected-agents-refresh-progress-bar" data-connected-agents-refresh-bar></span>
-        </div>
-        <p id="agent-settings-refresh-connected-agents-next" class="connected-agents-refresh-next" data-connected-agents-refresh-next aria-live="polite">Auto-refresh in 30s.</p>
-        <p id="agent-settings-refresh-connected-agents-status" class="connected-agents-refresh-status" data-connected-agents-refresh-status aria-live="polite"></p>
-      </div>
       <form method="post" action="/profile" class="stack profile-shell">
         <div class="profile-grid profile-grid-top">
           <label>Handle<input id="agent-settings-handle" name="handle" value="{{.ProfileForm.Handle}}" {{if .State.Session.HandleFinalized}}readonly{{end}}></label>
@@ -332,7 +305,39 @@
         {{else}}
         <p class="hint">This bind used a temporary handle. Pick the permanent handle you want, then save the profile once to finalize it.</p>
         {{end}}
-        <button type="submit">Save Agent Profile</button>
+        <div class="profile-form-footer">
+          <div class="profile-form-footer-primary">
+            <div class="connected-agents-refresh-shell connected-agents-refresh-shell-inline connected-agents-refresh-shell-compact">
+              <div
+                id="agent-settings-refresh-connected-agents-progress"
+                class="connected-agents-refresh-progress"
+                data-connected-agents-refresh-progress
+                role="progressbar"
+                aria-label="Connected agents refresh progress"
+                aria-valuemin="0"
+                aria-valuemax="100"
+                aria-valuenow="0"
+              >
+                <span class="connected-agents-refresh-progress-bar" data-connected-agents-refresh-bar></span>
+              </div>
+              <button
+                type="button"
+                id="agent-settings-refresh-connected-agents"
+                class="connected-agents-refresh connected-agents-refresh-icon-button"
+                data-connected-agents-refresh-button
+                aria-label="Refresh connected agents"
+                title="Refresh connected agents"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M20 11a8 8 0 1 0 2.1 5.4"></path>
+                  <path d="M20 4v7h-7"></path>
+                </svg>
+              </button>
+            </div>
+            <button type="submit" class="profile-save-button">Save</button>
+          </div>
+          <p id="agent-settings-refresh-connected-agents-status" class="connected-agents-refresh-status" data-connected-agents-refresh-status aria-live="polite"></p>
+        </div>
       </form>
     </section>
   </div>
@@ -451,7 +456,6 @@
       const connectedAgentsRefreshStatusNodes = Array.from(document.querySelectorAll("[data-connected-agents-refresh-status]"));
       const connectedAgentsRefreshProgressNodes = Array.from(document.querySelectorAll("[data-connected-agents-refresh-progress]"));
       const connectedAgentsRefreshProgressBarNodes = Array.from(document.querySelectorAll("[data-connected-agents-refresh-bar]"));
-      const connectedAgentsRefreshNextNodes = Array.from(document.querySelectorAll("[data-connected-agents-refresh-next]"));
       const onboardingModalBackdrop = document.getElementById("onboarding-modal-backdrop");
       const agentSettingsDockButton = document.getElementById("agent-settings-dock-button");
       const agentSettingsModalBackdrop = document.getElementById("agent-settings-modal-backdrop");
@@ -1917,19 +1921,6 @@
         });
       };
 
-      const setConnectedAgentsRefreshCountdown = (remainingMs, busy) => {
-        const safeRemaining = Math.max(0, Number.isFinite(remainingMs) ? remainingMs : 0);
-        const seconds = Math.max(0, Math.ceil(safeRemaining / 1000));
-        const text = busy
-          ? "Refreshing connected agents..."
-          : `Auto-refresh in ${seconds}s.`;
-        connectedAgentsRefreshNextNodes.forEach((node) => {
-          if (node instanceof HTMLElement) {
-            node.textContent = text;
-          }
-        });
-      };
-
       const setConnectedAgentsRefreshState = (busy, status, isError = false) => {
         connectedAgentsRefreshButtons.forEach((node) => {
           if (node instanceof HTMLButtonElement) {
@@ -1962,7 +1953,6 @@
         const nextDelayMs = Math.max(0, Number.isFinite(delayMs) ? Math.floor(delayMs) : CONNECTED_AGENTS_REFRESH_INTERVAL_MS);
         connectedAgentsNextRefreshAt = Date.now() + nextDelayMs;
         setConnectedAgentsRefreshProgress(0);
-        setConnectedAgentsRefreshCountdown(nextDelayMs, false);
         connectedAgentsAutoRefreshTimer = window.setTimeout(() => {
           void refreshConnectedAgents("auto");
         }, nextDelayMs);
@@ -1979,7 +1969,6 @@
           const remainingMs = Math.max(0, connectedAgentsNextRefreshAt - Date.now());
           const elapsedMs = CONNECTED_AGENTS_REFRESH_INTERVAL_MS - remainingMs;
           setConnectedAgentsRefreshProgress(elapsedMs / CONNECTED_AGENTS_REFRESH_INTERVAL_MS);
-          setConnectedAgentsRefreshCountdown(remainingMs, false);
         }, CONNECTED_AGENTS_REFRESH_TICK_MS);
       };
 
@@ -1993,7 +1982,6 @@
           connectedAgentsAutoRefreshTimer = 0;
         }
         setConnectedAgentsRefreshProgress(1);
-        setConnectedAgentsRefreshCountdown(0, true);
         setConnectedAgentsRefreshState(true, "Refreshing connected agents...");
         try {
           const response = await fetch("/api/connected-agents", {
