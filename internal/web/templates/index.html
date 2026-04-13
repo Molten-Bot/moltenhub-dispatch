@@ -476,6 +476,7 @@
       const skillPayloadInput = document.getElementById("skill-payload-input");
       const skillPayloadValidation = document.getElementById("skill-payload-validation");
       const skillPayloadFormatInput = document.getElementById("skill-payload-format-input");
+      const trimmedString = (value) => String(value || "").trim();
       const defaultSkillPayloadPlaceholder = skillPayloadInput instanceof HTMLTextAreaElement
         ? trimmedString(skillPayloadInput.getAttribute("data-default-placeholder")) || "Issue an offline to moltenbot hub -> review na.hub.molten.bot.openapi.yaml for integration behaviours."
         : "Issue an offline to moltenbot hub -> review na.hub.molten.bot.openapi.yaml for integration behaviours.";
@@ -1517,8 +1518,6 @@
         };
         syncSubActions(latestHubConnectionState);
       };
-
-      const trimmedString = (value) => String(value || "").trim();
       let dispatchRequestInFlight = false;
       let dispatchStatusClearTimer = 0;
 
