@@ -1077,17 +1077,32 @@ func TestHandleIndexRendersBottomDockAndSettingsDialogForBoundSession(t *testing
 	if !strings.Contains(body, `id="agent-settings-modal-close"`) {
 		t.Fatalf("expected settings dialog close control, body=%s", body)
 	}
+	if !strings.Contains(body, `Update how this agent appears in Molten Hub.`) {
+		t.Fatalf("expected updated agent settings summary copy, body=%s", body)
+	}
+	if strings.Contains(body, `Update how this dispatcher appears in Molten Hub.`) {
+		t.Fatalf("did not expect outdated dispatcher settings summary copy, body=%s", body)
+	}
 	if !strings.Contains(body, `id="agent-settings-refresh-connected-agents"`) {
 		t.Fatalf("expected connected-agents refresh button inside settings dialog, body=%s", body)
 	}
 	if !strings.Contains(body, `id="agent-settings-refresh-connected-agents-progress"`) {
 		t.Fatalf("expected connected-agents refresh progress inside settings dialog, body=%s", body)
 	}
-	if !strings.Contains(body, `id="agent-settings-refresh-connected-agents-next"`) {
-		t.Fatalf("expected connected-agents refresh countdown inside settings dialog, body=%s", body)
+	if strings.Contains(body, `id="agent-settings-refresh-connected-agents-next"`) {
+		t.Fatalf("did not expect removed connected-agents refresh countdown inside settings dialog, body=%s", body)
 	}
 	if !strings.Contains(body, `id="agent-settings-refresh-connected-agents-status"`) {
 		t.Fatalf("expected connected-agents refresh status inside settings dialog, body=%s", body)
+	}
+	if !strings.Contains(body, `class="connected-agents-refresh connected-agents-refresh-icon-button"`) {
+		t.Fatalf("expected icon-only refresh button styling inside settings dialog, body=%s", body)
+	}
+	if strings.Contains(body, `Refresh Connected Agents`) {
+		t.Fatalf("did not expect text label inside icon-only refresh button, body=%s", body)
+	}
+	if !strings.Contains(body, `class="profile-save-button"`) || !strings.Contains(body, `>Save</button>`) {
+		t.Fatalf("expected compact save button in profile footer, body=%s", body)
 	}
 	if !strings.Contains(body, `const agentSettingsDockButton = document.getElementById("agent-settings-dock-button");`) {
 		t.Fatalf("expected settings dock JS hook, body=%s", body)
@@ -1922,6 +1937,12 @@ func TestHandleIndexRendersConnectedAgentsRefreshPanel(t *testing.T) {
 	}
 	if !strings.Contains(body, `const connectedAgentsRefreshButtons = Array.from(document.querySelectorAll("[data-connected-agents-refresh-button]"));`) {
 		t.Fatalf("expected shared manual refresh button hooks, body=%s", body)
+	}
+	if strings.Contains(body, `const connectedAgentsRefreshNextNodes = Array.from(document.querySelectorAll("[data-connected-agents-refresh-next]"));`) {
+		t.Fatalf("did not expect removed refresh countdown node hooks, body=%s", body)
+	}
+	if strings.Contains(body, `const setConnectedAgentsRefreshCountdown = (remainingMs, busy) => {`) {
+		t.Fatalf("did not expect removed refresh countdown helper, body=%s", body)
 	}
 	if !strings.Contains(body, `setConnectedAgentsRefreshState(false, "");`) {
 		t.Fatalf("expected refresh completion to clear the status text, body=%s", body)
