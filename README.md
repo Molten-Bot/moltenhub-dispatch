@@ -71,6 +71,11 @@ Onboarding is available through:
 - `POST /bind` (form fallback)
 - `POST /api/onboarding` (JSON flow used by the UI for in-place progress/error updates)
 
+Manual dispatch is available through:
+
+- `POST /dispatch` (form fallback)
+- `POST /api/dispatch` (async flow used by the UI to avoid full-page reloads; successful submissions clear only the skill payload while keeping the selected agent and skill)
+
 ## Local Development
 
 Requirements:

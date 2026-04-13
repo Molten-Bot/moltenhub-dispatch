@@ -5,6 +5,7 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"net/http"
@@ -75,6 +76,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/status", s.handleStatus)
 	s.mux.HandleFunc("/api/onboarding", s.handleOnboarding)
 	s.mux.HandleFunc("/api/connected-agents", s.handleConnectedAgents)
+	s.mux.HandleFunc("/api/dispatch", s.handleDispatchAPI)
 	s.mux.HandleFunc("/bind", s.handleBind)
 	s.mux.HandleFunc("/profile", s.handleProfile)
 	s.mux.HandleFunc("/agents", s.handleAgents)
@@ -327,59 +329,57 @@ func (s *Server) handleDispatch(w http.ResponseWriter, r *http.Request) {
 		s.redirectWithMessage(w, r, "error", err.Error())
 		return
 	}
-
-	payloadText := strings.TrimSpace(r.FormValue("payload"))
-	payloadFormat := strings.ToLower(strings.TrimSpace(r.FormValue("payload_format")))
-	var payloadValue any
-	switch {
-	case payloadText == "":
-		// Hub rejects payload_format when payload is omitted.
-		payloadFormat = ""
-	case payloadFormat == "json":
-		var decoded any
-		if err := json.Unmarshal([]byte(payloadText), &decoded); err != nil {
-			s.redirectWithMessage(w, r, "error", "payload JSON is invalid: "+err.Error())
-			return
-		}
-		payloadValue = decoded
-	case payloadFormat == "", payloadFormat == "text", payloadFormat == "markdown":
-		if decoded, ok := decodeJSONObjectPayload(payloadText); ok {
-			payloadFormat = "json"
-			payloadValue = decoded
-		} else {
-			payloadFormat = "markdown"
-			payloadValue = payloadText
-		}
-	default:
-		s.redirectWithMessage(w, r, "error", "payload_format must be one of markdown or json")
+	dispatchReq, err := dispatchRequestFromValues(r.Form)
+	if err != nil {
+		s.redirectWithMessage(w, r, "error", err.Error())
 		return
 	}
+	dispatchReq.RequestID = app.NewID("ui")
 
-	timeout := 0 * time.Second
-	if raw := strings.TrimSpace(r.FormValue("timeout_seconds")); raw != "" {
-		seconds, err := time.ParseDuration(raw + "s")
-		if err != nil {
-			s.redirectWithMessage(w, r, "error", "timeout_seconds must be numeric")
-			return
-		}
-		timeout = seconds
-	}
-
-	task, err := s.service.DispatchFromUI(r.Context(), app.DispatchRequest{
-		RequestID:      app.NewID("ui"),
-		TargetAgentRef: strings.TrimSpace(r.FormValue("target_agent_ref")),
-		SkillName:      strings.TrimSpace(r.FormValue("skill_name")),
-		Repo:           strings.TrimSpace(r.FormValue("repo")),
-		LogPaths:       support.SplitLines(r.FormValue("log_paths")),
-		Payload:        payloadValue,
-		PayloadFormat:  payloadFormat,
-		Timeout:        timeout,
-	})
+	task, err := s.service.DispatchFromUI(r.Context(), dispatchReq)
 	if err != nil {
 		s.redirectWithMessage(w, r, "error", err.Error())
 		return
 	}
 	s.redirectWithMessage(w, r, "info", "Dispatched task "+task.ID)
+}
+
+func (s *Server) handleDispatchAPI(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", http.MethodPost)
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{
+			"ok":    false,
+			"error": err.Error(),
+		})
+		return
+	}
+	dispatchReq, err := dispatchRequestFromValues(r.Form)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{
+			"ok":    false,
+			"error": err.Error(),
+		})
+		return
+	}
+	dispatchReq.RequestID = app.NewID("ui")
+
+	task, err := s.service.DispatchFromUI(r.Context(), dispatchReq)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{
+			"ok":    false,
+			"error": err.Error(),
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok":      true,
+		"task_id": task.ID,
+		"message": "Dispatched task " + task.ID,
+	})
 }
 
 func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
@@ -442,6 +442,52 @@ func decodeJSONObjectPayload(raw string) (map[string]any, bool) {
 		return nil, false
 	}
 	return decoded, true
+}
+
+func dispatchRequestFromValues(values url.Values) (app.DispatchRequest, error) {
+	payloadText := strings.TrimSpace(values.Get("payload"))
+	payloadFormat := strings.ToLower(strings.TrimSpace(values.Get("payload_format")))
+	var payloadValue any
+	switch {
+	case payloadText == "":
+		// Hub rejects payload_format when payload is omitted.
+		payloadFormat = ""
+	case payloadFormat == "json":
+		var decoded any
+		if err := json.Unmarshal([]byte(payloadText), &decoded); err != nil {
+			return app.DispatchRequest{}, fmt.Errorf("payload JSON is invalid: %w", err)
+		}
+		payloadValue = decoded
+	case payloadFormat == "", payloadFormat == "text", payloadFormat == "markdown":
+		if decoded, ok := decodeJSONObjectPayload(payloadText); ok {
+			payloadFormat = "json"
+			payloadValue = decoded
+		} else {
+			payloadFormat = "markdown"
+			payloadValue = payloadText
+		}
+	default:
+		return app.DispatchRequest{}, errors.New("payload_format must be one of markdown or json")
+	}
+
+	timeout := 0 * time.Second
+	if raw := strings.TrimSpace(values.Get("timeout_seconds")); raw != "" {
+		seconds, err := time.ParseDuration(raw + "s")
+		if err != nil {
+			return app.DispatchRequest{}, errors.New("timeout_seconds must be numeric")
+		}
+		timeout = seconds
+	}
+
+	return app.DispatchRequest{
+		TargetAgentRef: strings.TrimSpace(values.Get("target_agent_ref")),
+		SkillName:      strings.TrimSpace(values.Get("skill_name")),
+		Repo:           strings.TrimSpace(values.Get("repo")),
+		LogPaths:       support.SplitLines(values.Get("log_paths")),
+		Payload:        payloadValue,
+		PayloadFormat:  payloadFormat,
+		Timeout:        timeout,
+	}, nil
 }
 
 func parseSkills(raw string) []app.Skill {
