@@ -90,7 +90,7 @@
 
     <div id="sub-actions" {{if not .SubActions.Visible}}hidden{{end}}>
       <section class="grid manual-dispatch-grid">
-        <article class="panel">
+        <article class="panel form-surface">
           <h2>Manual Dispatch</h2>
           <form id="manual-dispatch-form" method="post" action="/dispatch" class="stack">
             <input id="target-agent-ref-input" type="hidden" name="target_agent_ref">
@@ -269,7 +269,7 @@
     aria-describedby="agent-settings-modal-summary"
     hidden
   >
-    <section class="settings-modal">
+    <section class="settings-modal form-surface">
       <header class="settings-modal-header">
         <div class="settings-modal-copy">
           <p class="eyebrow">Agent Settings</p>
@@ -362,7 +362,7 @@
     aria-labelledby="onboarding-modal-title"
     aria-describedby="onboarding-modal-summary"
   >
-    <section class="onboarding-modal">
+    <section class="onboarding-modal form-surface">
       <header class="onboarding-modal-header">
         <p class="eyebrow">Molten Hub Onboarding</p>
         <h2 id="onboarding-modal-title">Bind Dispatcher Agent</h2>

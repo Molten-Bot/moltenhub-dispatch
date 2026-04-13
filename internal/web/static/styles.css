@@ -156,6 +156,8 @@
     inset 0 1px 0 rgba(255, 255, 255, 0.82),
     0 0 0 3px rgba(76, 133, 233, 0.18);
   --agent-logo-filter: brightness(0) saturate(100%);
+  --form-surface-padding: 20px;
+  --form-surface-padding-mobile: 14px;
   --body-radial-left: radial-gradient(1300px 600px at -10% -15%, rgba(10, 132, 255, 0.16), transparent 60%);
   --body-radial-right: radial-gradient(980px 560px at 110% 8%, rgba(123, 97, 255, 0.12), transparent 62%);
   --body-linear: linear-gradient(180deg, #f8fbff, #f2f7ff 55%, #ecf3ff);
@@ -3582,6 +3584,10 @@ p,
   min-width: 0;
 }
 
+.form-surface {
+  padding: var(--form-surface-padding);
+}
+
 .stack {
   display: grid;
   gap: 12px;
@@ -3893,7 +3899,6 @@ body.settings-modal-open {
   width: min(860px, 100%);
   max-height: min(92vh, 880px);
   overflow: auto;
-  padding: clamp(16px, 2.4vw, 26px);
   border: 1px solid var(--surface-auth-panel-border);
   border-radius: 24px;
   background: var(--surface-auth-panel-bg);
@@ -3934,7 +3939,6 @@ body.settings-modal-open {
   width: min(920px, 100%);
   max-height: min(92vh, 880px);
   overflow: auto;
-  padding: clamp(16px, 2.4vw, 26px);
   border: 1px solid var(--surface-auth-panel-border);
   border-radius: 24px;
   background: var(--surface-auth-panel-bg);
@@ -4299,7 +4303,10 @@ pre {
     width: 100%;
     max-height: calc(100vh - 24px);
     border-radius: 18px;
-    padding: 14px;
+  }
+
+  .form-surface {
+    padding: var(--form-surface-padding-mobile);
   }
 
   .settings-modal-header {
