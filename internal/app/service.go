@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -499,7 +500,7 @@ func (s *Service) RunHubLoop(ctx context.Context) {
 					continue
 				}
 			}
-			s.noteHubInteraction(err, ConnectionTransportWebSocket)
+			s.noteRealtimeFallback(err)
 			if err := s.runHTTPFallbackWindow(ctx); err != nil {
 				return
 			}
@@ -608,6 +609,28 @@ func (s *Service) noteHubPingReachable(detail string) {
 			Transport:     ConnectionTransportReachable,
 			LastChangedAt: now,
 			Detail:        strings.TrimSpace(detail),
+			BaseURL:       baseURL,
+			Domain:        domain,
+		}
+		state.Session.OfflineMarked = false
+		return nil
+	})
+}
+
+func (s *Service) noteRealtimeFallback(err error) {
+	now := time.Now().UTC()
+	_ = s.store.Update(func(state *AppState) error {
+		baseURL, domain := hubConnectionTarget(state.Session.APIBase, state.Settings.HubURL)
+		detail := "WebSocket unavailable; falling back to HTTP long polling."
+		if err != nil {
+			detail = fmt.Sprintf("%s Error: %s", detail, strings.TrimSpace(err.Error()))
+		}
+		state.Connection = ConnectionState{
+			Status:        ConnectionStatusDisconnected,
+			Transport:     ConnectionTransportReachable,
+			LastChangedAt: now,
+			Error:         strings.TrimSpace(errorString(err)),
+			Detail:        detail,
 			BaseURL:       baseURL,
 			Domain:        domain,
 		}
@@ -1008,36 +1031,38 @@ func (s *Service) updateAgentProfile(ctx context.Context, token string, profile 
 }
 
 func (s *Service) resolveDispatchTarget(state AppState, req DispatchRequest) (ConnectedAgent, error) {
-	if req.TargetAgentRef != "" {
-		if agent, ok := FindConnectedAgent(state.ConnectedAgents, req.TargetAgentRef); ok {
+	targetRef := strings.TrimSpace(req.TargetAgentRef)
+	if targetRef != "" {
+		if agent, ok := FindConnectedAgent(state.ConnectedAgents, targetRef); ok {
 			return agent, nil
 		}
 		for _, agent := range state.ConnectedAgents {
-			if agent.AgentUUID == req.TargetAgentRef || agent.AgentURI == req.TargetAgentRef {
+			if agent.AgentUUID == targetRef || agent.AgentURI == targetRef {
 				return agent, nil
 			}
 		}
-		if strings.HasPrefix(req.TargetAgentRef, "molten://") {
-			return ConnectedAgent{Name: req.TargetAgentRef, AgentURI: req.TargetAgentRef}, nil
+		if strings.HasPrefix(targetRef, "molten://") {
+			return ConnectedAgent{Name: targetRef, AgentURI: targetRef}, nil
 		}
-		return ConnectedAgent{}, fmt.Errorf("no connected agent matched %q", req.TargetAgentRef)
+		return ConnectedAgent{}, fmt.Errorf("no connected agent matched %q", targetRef)
 	}
 
-	if strings.TrimSpace(req.SkillName) == "" {
+	skillName := strings.TrimSpace(req.SkillName)
+	if skillName == "" {
 		return ConnectedAgent{}, errors.New("skill_name is required when target_agent_ref is empty")
 	}
 
 	for _, agent := range state.ConnectedAgents {
-		if agent.DefaultSkill == req.SkillName {
+		if agent.DefaultSkill == skillName {
 			return agent, nil
 		}
 		for _, skill := range agent.AdvertisedSkills {
-			if skill.Name == req.SkillName {
+			if skill.Name == skillName {
 				return agent, nil
 			}
 		}
 	}
-	return ConnectedAgent{}, fmt.Errorf("no connected agent advertises skill %q", req.SkillName)
+	return ConnectedAgent{}, fmt.Errorf("no connected agent advertises skill %q", skillName)
 }
 
 func (s *Service) prepareDispatchRequest(state AppState, req DispatchRequest) (ConnectedAgent, DispatchRequest, error) {
@@ -1200,13 +1225,7 @@ func (p *dispatchPayload) fromJSONBytes(data []byte) error {
 }
 
 func (p dispatchPayload) TargetAgentRef() string {
-	if p.AgentRef != "" {
-		return p.AgentRef
-	}
-	if p.TargetAgentUUID != "" {
-		return p.TargetAgentUUID
-	}
-	return p.TargetAgentURI
+	return support.FirstNonEmptyString(p.AgentRef, p.TargetAgentUUID, p.TargetAgentURI)
 }
 
 func normalizePayload(payload any, repo string, logPaths []string) map[string]any {
@@ -1547,6 +1566,13 @@ func intFromAny(value any) (int64, bool) {
 	}
 }
 
+func errorString(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
+}
+
 func stringFromMap(values map[string]any, keys ...string) string {
 	return support.StringFromMap(values, keys...)
 }
@@ -1742,19 +1768,20 @@ func flattenPeerSkillCatalog(raw any) []map[string]any {
 }
 
 func connectedAgentFromCapabilityEntry(entry map[string]any, state AppState, existingByRef map[string]ConnectedAgent) (ConnectedAgent, bool) {
+	sources := capabilityStringSources(entry)
 	metadata := nestedMetadata(entry)
 	agentSection := nestedMap(entry, "agent")
 
-	agentUUID := firstCapabilityString(entry, metadata, agentSection, "agent_uuid", "uuid")
-	agentURI := firstCapabilityString(entry, metadata, agentSection, "agent_uri", "uri")
-	handle := firstCapabilityString(entry, metadata, agentSection, "handle", "agent_id", "id")
+	agentUUID := firstCapabilityString(sources, "agent_uuid", "uuid")
+	agentURI := firstCapabilityString(sources, "agent_uri", "uri")
+	handle := firstCapabilityString(sources, "handle", "agent_id", "id")
 	if sameAgentRef(state.Session, agentUUID, agentURI, handle) {
 		return ConnectedAgent{}, false
 	}
 
 	previous := existingConnectedAgent(existingByRef, handle, agentUUID, agentURI)
-	name := firstCapabilityString(entry, metadata, agentSection, "display_name", "name", "handle", "agent_id", "id")
-	emoji := firstCapabilityString(entry, metadata, agentSection, "emoji")
+	name := firstCapabilityString(sources, "display_name", "name", "handle", "agent_id", "id")
+	emoji := capabilityEmoji(sources)
 	skills := capabilitySkills(entry, metadata, agentSection)
 
 	agent := previous
@@ -1786,6 +1813,63 @@ func nestedMetadata(entry map[string]any) map[string]any {
 	return nil
 }
 
+func capabilityStringSources(entry map[string]any) []map[string]any {
+	sources := make([]map[string]any, 0, 16)
+	seen := make(map[uintptr]struct{}, 16)
+	appendSource := func(source map[string]any) {
+		if len(source) == 0 {
+			return
+		}
+		ref := reflect.ValueOf(source).Pointer()
+		if _, ok := seen[ref]; ok {
+			return
+		}
+		seen[ref] = struct{}{}
+		sources = append(sources, source)
+	}
+
+	entryKeys := []string{
+		"metadata",
+		"agent",
+		"profile",
+		"public_profile",
+		"directory_profile",
+		"directory",
+		"public_directory",
+		"identity",
+		"peer",
+		"peer_agent",
+		"agent_profile",
+	}
+
+	appendSource(entry)
+	queue := []map[string]any{entry}
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+		for _, key := range entryKeys {
+			nested := nestedMap(current, key)
+			if len(nested) == 0 {
+				continue
+			}
+			ref := reflect.ValueOf(nested).Pointer()
+			if _, ok := seen[ref]; ok {
+				continue
+			}
+			appendSource(nested)
+			queue = append(queue, nested)
+		}
+	}
+
+	for i := 0; i < len(sources); i++ {
+		if nested := nestedMap(sources[i], "metadata"); len(nested) > 0 {
+			appendSource(nested)
+		}
+	}
+
+	return sources
+}
+
 func nestedMap(entry map[string]any, key string) map[string]any {
 	value, ok := entry[key]
 	if !ok {
@@ -1795,9 +1879,9 @@ func nestedMap(entry map[string]any, key string) map[string]any {
 	return mapped
 }
 
-func firstCapabilityString(primary map[string]any, metadata map[string]any, agent map[string]any, keys ...string) string {
+func firstCapabilityString(sources []map[string]any, keys ...string) string {
 	for _, key := range keys {
-		for _, source := range []map[string]any{primary, metadata, agent} {
+		for _, source := range sources {
 			if source == nil {
 				continue
 			}
@@ -1806,6 +1890,38 @@ func firstCapabilityString(primary map[string]any, metadata map[string]any, agen
 			}
 		}
 	}
+	return ""
+}
+
+func capabilityEmoji(sources []map[string]any) string {
+	if emoji := firstCapabilityString(sources,
+		"emoji",
+		"avatar_emoji",
+		"display_emoji",
+		"profile_emoji",
+		"icon_emoji",
+		"emoji_native",
+		"avatarEmoji",
+		"displayEmoji",
+		"emojiNative",
+		"avatar",
+		"icon",
+	); emoji != "" {
+		return emoji
+	}
+
+	for _, source := range sources {
+		for _, key := range []string{"avatar", "icon"} {
+			nested := nestedMap(source, key)
+			if len(nested) == 0 {
+				continue
+			}
+			if emoji := stringFromMap(nested, "emoji", "native", "emoji_native", "emojiNative"); emoji != "" {
+				return emoji
+			}
+		}
+	}
+
 	return ""
 }
 

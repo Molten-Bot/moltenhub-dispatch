@@ -156,6 +156,8 @@
     inset 0 1px 0 rgba(255, 255, 255, 0.82),
     0 0 0 3px rgba(76, 133, 233, 0.18);
   --agent-logo-filter: brightness(0) saturate(100%);
+  --form-surface-padding: 20px;
+  --form-surface-padding-mobile: 14px;
   --body-radial-left: radial-gradient(1300px 600px at -10% -15%, rgba(10, 132, 255, 0.16), transparent 60%);
   --body-radial-right: radial-gradient(980px 560px at 110% 8%, rgba(123, 97, 255, 0.12), transparent 62%);
   --body-linear: linear-gradient(180deg, #f8fbff, #f2f7ff 55%, #ecf3ff);
@@ -3438,22 +3440,71 @@ html[data-hover-mode="off"] .prompt-visibility-toggle:hover {
 .page-title-block {
   display: grid;
   gap: 6px;
+  min-width: 0;
 }
 
-.eyebrow {
-  margin: 0;
-  color: var(--surface-label);
-  font-size: 0.69rem;
+.brand-lockup {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.brand-logo-group {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  flex-shrink: 0;
+}
+
+.brand-logo {
+  display: block;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.rotating-brand-logo {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  margin: auto;
+  opacity: 0;
+  visibility: hidden;
+  transform: scale(0.96);
+  transition: opacity 0.65s ease, transform 0.65s ease, visibility 0.65s ease;
+  will-change: opacity, transform;
+  object-fit: contain;
+}
+
+.rotating-brand-logo.brand-logo-visible {
+  opacity: 1;
+  visibility: visible;
+  transform: scale(1);
+}
+
+.title {
+  font-family: "Sora", "Instrument Sans", sans-serif;
+  font-size: clamp(1.35rem, 1.8vw, 1.6rem);
   font-weight: 800;
-  letter-spacing: 0.11em;
-  text-transform: uppercase;
+  letter-spacing: -0.03em;
+  color: var(--text);
+  text-transform: none;
+}
+
+.sub {
+  color: var(--text-soft);
+  font-size: 0.92rem;
 }
 
 .page-subtitle {
-  color: var(--text-soft);
-  font-size: 1rem;
+  margin: 0;
+  line-height: 1.5;
   font-weight: 600;
-  line-height: 1.35;
 }
 
 .connection-status-row {
@@ -3528,9 +3579,18 @@ p,
   grid-template-columns: minmax(0, 1fr);
 }
 
+#sub-actions {
+  display: grid;
+  gap: 20px;
+}
+
 .panel {
   padding: 20px;
   min-width: 0;
+}
+
+.form-surface {
+  padding: var(--form-surface-padding);
 }
 
 .stack {
@@ -3844,7 +3904,6 @@ body.settings-modal-open {
   width: min(860px, 100%);
   max-height: min(92vh, 880px);
   overflow: auto;
-  padding: clamp(16px, 2.4vw, 26px);
   border: 1px solid var(--surface-auth-panel-border);
   border-radius: 24px;
   background: var(--surface-auth-panel-bg);
@@ -3885,7 +3944,6 @@ body.settings-modal-open {
   width: min(920px, 100%);
   max-height: min(92vh, 880px);
   overflow: auto;
-  padding: clamp(16px, 2.4vw, 26px);
   border: 1px solid var(--surface-auth-panel-border);
   border-radius: 24px;
   background: var(--surface-auth-panel-bg);
@@ -4191,6 +4249,40 @@ body.settings-modal-open {
   font-size: 0.92rem;
 }
 
+.runtime-event-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.runtime-event-card-header h3 {
+  margin: 0;
+}
+
+.runtime-event-card-toggle {
+  min-width: 68px;
+  padding: 6px 10px;
+  border: 1px solid color-mix(in srgb, var(--running) 28%, var(--border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-glass-strong) 88%, rgba(10, 132, 255, 0.08));
+  color: var(--running);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.runtime-event-card-toggle:hover,
+.runtime-event-card-toggle:focus-visible {
+  border-color: color-mix(in srgb, var(--running) 42%, var(--border));
+  background: color-mix(in srgb, var(--surface-glass-strong) 82%, rgba(10, 132, 255, 0.14));
+}
+
+.runtime-event-card-body[hidden] {
+  display: none;
+}
+
 .card p {
   margin-top: 6px;
 }
@@ -4250,7 +4342,10 @@ pre {
     width: 100%;
     max-height: calc(100vh - 24px);
     border-radius: 18px;
-    padding: 14px;
+  }
+
+  .form-surface {
+    padding: var(--form-surface-padding-mobile);
   }
 
   .settings-modal-header {

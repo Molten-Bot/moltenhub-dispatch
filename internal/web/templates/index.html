@@ -23,11 +23,30 @@
     data-connected-agent-count="{{len .State.ConnectedAgents}}"
   >
     <header class="page-header">
-      <div class="page-title-block">
-        <p class="eyebrow">Molten Hub Console</p>
-        <p class="page-subtitle">Dispatch work to your quiet army.</p>
+      <div class="brand-lockup">
+        <div class="brand-logo-group">
+          <img
+            id="moltenhub-logo"
+            class="brand-logo rotating-brand-logo brand-logo-visible"
+            src="/static/logo.svg"
+            alt="MoltenHub logo">
+        </div>
+        <div class="page-title-block">
+          <div class="title">Molten Hub Console</div>
+          <p class="sub page-subtitle">Dispatch work to your quiet army.</p>
+        </div>
       </div>
       <div class="status-row connection-status-row" aria-live="polite">
+        <div
+          id="local-conn-item"
+          class="status-item status-item-compact"
+          title="Local: Connecting..."
+          aria-label="Local: Connecting..."
+          tabindex="0"
+        >
+          <span id="local-conn-dot" class="dot"></span>
+          <span id="local-conn-text" class="status-tooltip">Local: Connecting...</span>
+        </div>
         <div
           id="hub-conn-item"
           class="status-item status-item-compact"
@@ -67,43 +86,16 @@
       <p class="sub-actions-hub-link-row" data-sub-actions-connect-panel {{if not .SubActions.RequiresAgentConnection}}hidden{{end}}>
         <a class="sub-actions-hub-link" href="{{if .SubActions.AgentConnectURL}}{{.SubActions.AgentConnectURL}}{{else}}https://app.molten.bot/hub{{end}}" target="_blank" rel="noreferrer noopener">Connect agents in Molten Bot Hub</a>
       </p>
-      <div class="connected-agents-refresh-shell connected-agents-refresh-shell-inline">
-        <button
-          type="button"
-          id="sub-actions-notice-refresh"
-          class="connected-agents-refresh"
-          data-connected-agents-refresh-button
-          aria-label="Refresh connected agents now"
-          title="Refresh connected agents now"
-        >
-          <span aria-hidden="true">↻</span>
-          <span>Refresh</span>
-        </button>
-        <div
-          id="sub-actions-notice-refresh-progress"
-          class="connected-agents-refresh-progress"
-          data-connected-agents-refresh-progress
-          role="progressbar"
-          aria-label="Connected agents auto-refresh progress"
-          aria-valuemin="0"
-          aria-valuemax="100"
-          aria-valuenow="0"
-        >
-          <span class="connected-agents-refresh-progress-bar" data-connected-agents-refresh-bar></span>
-        </div>
-        <p class="connected-agents-refresh-next" data-connected-agents-refresh-next aria-live="polite">Auto-refresh in 30s.</p>
-        <p class="connected-agents-refresh-status" data-connected-agents-refresh-status aria-live="polite"></p>
-      </div>
     </section>
 
     <div id="sub-actions" {{if not .SubActions.Visible}}hidden{{end}}>
       <section class="grid manual-dispatch-grid">
-        <article class="panel">
-          <h2>Manual Dispatch</h2>
+        <article class="panel form-surface">
+          <h2>Dispatch</h2>
           <form id="manual-dispatch-form" method="post" action="/dispatch" class="stack">
             <input id="target-agent-ref-input" type="hidden" name="target_agent_ref">
             <fieldset class="manual-dispatch-target-fieldset">
-              <legend>Target Agent Ref</legend>
+              <legend>Agents</legend>
               <p class="manual-dispatch-target-hint">Choose one of the connected agents below.</p>
               <div id="manual-dispatch-targets" class="list connected-agents-list connected-agents-list-selectable">
               {{range .State.ConnectedAgents}}
@@ -111,6 +103,7 @@
                 type="button"
                 class="connected-agent-card connected-agent-card-button"
                 data-connected-agent-target-ref="{{if .ID}}{{.ID}}{{else if .AgentUUID}}{{.AgentUUID}}{{else if .AgentURI}}{{.AgentURI}}{{else if .Name}}{{.Name}}{{end}}"
+                data-connected-agent-refs="{{if .ID}}{{.ID}}{{end}}{{if .AgentUUID}}{{if .ID}}&#10;{{end}}{{.AgentUUID}}{{end}}{{if .AgentURI}}{{if or .ID .AgentUUID}}&#10;{{end}}{{.AgentURI}}{{end}}"
                 data-connected-agent-display="{{if .Name}}{{.Name}}{{else if .ID}}{{.ID}}{{else if .AgentUUID}}{{.AgentUUID}}{{else if .AgentURI}}{{.AgentURI}}{{else}}Unknown agent{{end}}"
                 aria-pressed="false"
               >
@@ -127,18 +120,18 @@
               </div>
             </fieldset>
             <label>
-              Skill Name
+              Skills
               <select id="skill-name-select" name="skill_name" aria-describedby="skill-name-hint" disabled>
                 <option value="">Select an agent first</option>
               </select>
             </label>
-            <p id="skill-name-hint" class="manual-dispatch-skill-hint">Select a target agent to load its advertised skills from Molten Hub.</p>
+            <p id="skill-name-hint" class="manual-dispatch-skill-hint">Auto-select the first skill of that agent.</p>
             <label id="skill-payload-field" hidden>
               <span class="manual-dispatch-payload-label-row">
-                <span>Skill Payload</span>
+                <span>Payload</span>
               </span>
               <textarea id="skill-payload-input" name="payload" rows="4" placeholder="Enter markdown text or JSON for the selected skill." aria-describedby="skill-payload-hint skill-payload-validation" disabled></textarea>
-              <span id="skill-payload-hint" class="manual-dispatch-payload-hint">Format is detected automatically. Valid JSON objects/arrays are sent as JSON; everything else is sent as markdown.</span>
+              <span id="skill-payload-hint" class="manual-dispatch-payload-hint"></span>
               <span id="skill-payload-validation" class="manual-dispatch-payload-validation" aria-live="polite"></span>
             </label>
             <input id="skill-payload-format-input" type="hidden" name="payload_format" value="">
@@ -147,72 +140,6 @@
             </div>
             <p id="dispatch-submit-status" class="connected-agents-refresh-status" aria-live="polite"></p>
           </form>
-        </article>
-      </section>
-
-      <section class="grid two-up">
-        <article class="panel">
-          <div class="panel-heading-inline">
-            <h2>Connected Agents</h2>
-            <button
-              type="button"
-              id="connected-agents-refresh"
-              class="connected-agents-refresh"
-              data-connected-agents-refresh-button
-              aria-label="Refresh connected agents"
-              title="Refresh connected agents"
-            >
-              <span aria-hidden="true">↻</span>
-              <span>Refresh</span>
-            </button>
-          </div>
-          <div
-            id="connected-agents-refresh-progress"
-            class="connected-agents-refresh-progress"
-            data-connected-agents-refresh-progress
-            role="progressbar"
-            aria-label="Connected agents auto-refresh progress"
-            aria-valuemin="0"
-            aria-valuemax="100"
-            aria-valuenow="0"
-          >
-            <span class="connected-agents-refresh-progress-bar" data-connected-agents-refresh-bar></span>
-          </div>
-          <p id="connected-agents-refresh-next" class="connected-agents-refresh-next" data-connected-agents-refresh-next aria-live="polite">Auto-refresh in 30s.</p>
-          <p id="connected-agents-refresh-status" class="connected-agents-refresh-status" data-connected-agents-refresh-status aria-live="polite"></p>
-          <p id="connected-agents-empty" class="empty" {{if .State.ConnectedAgents}}hidden{{end}}>No connected agents configured yet.</p>
-          <div id="connected-agents-list" class="list connected-agents-list" {{if not .State.ConnectedAgents}}hidden{{end}}>
-            {{range .State.ConnectedAgents}}
-            <article class="connected-agent-card">
-              <div class="connected-agent-card-main">
-                <span class="connected-agent-avatar" aria-hidden="true">{{if .Emoji}}{{.Emoji}}{{else}}🤖{{end}}</span>
-                <div class="connected-agent-card-copy">
-                  <h3>{{if .Name}}{{.Name}}{{else if .ID}}{{.ID}}{{else if .AgentUUID}}{{.AgentUUID}}{{else if .AgentURI}}{{.AgentURI}}{{else}}Unknown agent{{end}}</h3>
-                  <p class="connected-agent-handle">{{if .ID}}@{{.ID}}{{else if .AgentUUID}}{{.AgentUUID}}{{else if .AgentURI}}{{.AgentURI}}{{else}}unknown{{end}}</p>
-                </div>
-              </div>
-            </article>
-            {{end}}
-          </div>
-        </article>
-
-        <article class="panel">
-          <h2>Pending Tasks</h2>
-          {{if .State.PendingTasks}}
-          <div class="list">
-            {{range .State.PendingTasks}}
-            <article class="card">
-              <h3>{{.ID}}</h3>
-              <p><strong>Skill:</strong> {{.OriginalSkillName}}</p>
-              <p><strong>Target:</strong> {{if .TargetAgentUUID}}{{.TargetAgentUUID}}{{else}}{{.TargetAgentURI}}{{end}}</p>
-              <p><strong>Expires:</strong> {{formatTime .ExpiresAt}}</p>
-              <p><strong>Log:</strong> {{.LogPath}}</p>
-            </article>
-            {{end}}
-          </div>
-          {{else}}
-          <p class="empty">No tasks are waiting on downstream results.</p>
-          {{end}}
         </article>
       </section>
 
@@ -245,13 +172,18 @@
           {{if .State.RecentEvents}}
           <div class="list">
             {{range .State.RecentEvents}}
-            <article class="card">
-              <h3>{{.Title}}</h3>
-              <p><strong>When:</strong> {{formatTime .At}}</p>
-              <p><strong>Level:</strong> {{.Level}}</p>
-              <p>{{.Detail}}</p>
-              {{if .TaskID}}<p><strong>Task:</strong> {{.TaskID}}</p>{{end}}
-              {{if .LogPath}}<p><strong>Log:</strong> {{.LogPath}}</p>{{end}}
+            <article class="card runtime-event-card" data-runtime-event-card>
+              <div class="runtime-event-card-header">
+                <h3>{{.Title}}</h3>
+                <button type="button" class="runtime-event-card-toggle" data-runtime-event-toggle aria-expanded="{{if eq .Level "error"}}true{{else}}false{{end}}">{{if eq .Level "error"}}Close{{else}}Open{{end}}</button>
+              </div>
+              <div class="runtime-event-card-body" data-runtime-event-body {{if ne .Level "error"}}hidden{{end}}>
+                <p><strong>When:</strong> {{formatTime .At}}</p>
+                <p><strong>Level:</strong> {{.Level}}</p>
+                <p>{{.Detail}}</p>
+                {{if .TaskID}}<p><strong>Task:</strong> {{.TaskID}}</p>{{end}}
+                {{if .LogPath}}<p><strong>Log:</strong> {{.LogPath}}</p>{{end}}
+              </div>
             </article>
             {{end}}
           </div>
@@ -311,7 +243,7 @@
     </div>
   </div>
   {{if .State.Session.AgentToken}}
-  <div
+      <div
     class="settings-modal-backdrop"
     id="agent-settings-modal-backdrop"
     role="dialog"
@@ -321,7 +253,7 @@
     aria-describedby="agent-settings-modal-summary"
     hidden
   >
-    <section class="settings-modal">
+    <section class="settings-modal form-surface">
       <header class="settings-modal-header">
         <div class="settings-modal-copy">
           <p class="eyebrow">Agent Settings</p>
@@ -330,6 +262,33 @@
         </div>
         <button type="button" class="settings-modal-close" id="agent-settings-modal-close">Close</button>
       </header>
+      <div class="connected-agents-refresh-shell">
+        <button
+          type="button"
+          id="agent-settings-refresh-connected-agents"
+          class="connected-agents-refresh"
+          data-connected-agents-refresh-button
+          aria-label="Refresh connected agents"
+          title="Refresh connected agents"
+        >
+          <span aria-hidden="true">↻</span>
+          <span>Refresh Connected Agents</span>
+        </button>
+        <div
+          id="agent-settings-refresh-connected-agents-progress"
+          class="connected-agents-refresh-progress"
+          data-connected-agents-refresh-progress
+          role="progressbar"
+          aria-label="Connected agents auto-refresh progress"
+          aria-valuemin="0"
+          aria-valuemax="100"
+          aria-valuenow="0"
+        >
+          <span class="connected-agents-refresh-progress-bar" data-connected-agents-refresh-bar></span>
+        </div>
+        <p id="agent-settings-refresh-connected-agents-next" class="connected-agents-refresh-next" data-connected-agents-refresh-next aria-live="polite">Auto-refresh in 30s.</p>
+        <p id="agent-settings-refresh-connected-agents-status" class="connected-agents-refresh-status" data-connected-agents-refresh-status aria-live="polite"></p>
+      </div>
       <form method="post" action="/profile" class="stack profile-shell">
         <div class="profile-grid profile-grid-top">
           <label>Handle<input id="agent-settings-handle" name="handle" value="{{.ProfileForm.Handle}}" {{if .State.Session.HandleFinalized}}readonly{{end}}></label>
@@ -387,7 +346,7 @@
     aria-labelledby="onboarding-modal-title"
     aria-describedby="onboarding-modal-summary"
   >
-    <section class="onboarding-modal">
+    <section class="onboarding-modal form-surface">
       <header class="onboarding-modal-header">
         <p class="eyebrow">Molten Hub Onboarding</p>
         <h2 id="onboarding-modal-title">Bind Dispatcher Agent</h2>
@@ -466,6 +425,9 @@
   <script>
     (() => {
       const shell = document.querySelector(".shell");
+      const localConnItem = document.getElementById("local-conn-item");
+      const localConnDot = document.getElementById("local-conn-dot");
+      const localConnText = document.getElementById("local-conn-text");
       const hubConnItem = document.getElementById("hub-conn-item");
       const hubConnDot = document.getElementById("hub-conn-dot");
       const hubConnText = document.getElementById("hub-conn-text");
@@ -482,6 +444,7 @@
       const skillPayloadFormatInput = document.getElementById("skill-payload-format-input");
       const dispatchTaskSubmit = document.getElementById("dispatch-task-submit");
       const dispatchSubmitStatus = document.getElementById("dispatch-submit-status");
+      const runtimeEventCards = Array.from(document.querySelectorAll("[data-runtime-event-card]"));
       const connectedAgentsList = document.getElementById("connected-agents-list");
       const connectedAgentsEmpty = document.getElementById("connected-agents-empty");
       const connectedAgentsRefreshButtons = Array.from(document.querySelectorAll("[data-connected-agents-refresh-button]"));
@@ -673,6 +636,26 @@
         }
         themeToggleButton.title = currentLabel;
         themeToggleButton.setAttribute("aria-label", `Switch theme. Currently: ${currentLabel}`);
+      };
+
+      const initRuntimeEventCards = () => {
+        runtimeEventCards.forEach((card) => {
+          if (!(card instanceof HTMLElement)) {
+            return;
+          }
+          const toggle = card.querySelector("[data-runtime-event-toggle]");
+          const body = card.querySelector("[data-runtime-event-body]");
+          if (!(toggle instanceof HTMLButtonElement) || !(body instanceof HTMLElement)) {
+            return;
+          }
+          toggle.addEventListener("click", () => {
+            const expanded = toggle.getAttribute("aria-expanded") === "true";
+            const nextExpanded = !expanded;
+            toggle.setAttribute("aria-expanded", nextExpanded ? "true" : "false");
+            toggle.textContent = nextExpanded ? "Close" : "Open";
+            body.hidden = !nextExpanded;
+          });
+        });
       };
 
       const applyThemeMode = (theme, persist) => {
@@ -1369,7 +1352,7 @@
 
       const setIndicator = (itemNode, dot, textNode, label, online, text) => {
         const message = `${label}: ${text}`;
-        if (dot) {
+        if (dot instanceof HTMLElement) {
           dot.classList.toggle("online", online);
         }
         if (textNode) {
@@ -1379,6 +1362,10 @@
           itemNode.title = message;
           itemNode.setAttribute("aria-label", message);
         }
+      };
+
+      const setLocalConnection = (online, text) => {
+        setIndicator(localConnItem, localConnDot, localConnText, "Local", online, text);
       };
 
       const applyHubDotMode = (mode) => {
@@ -1518,6 +1505,46 @@
         return "";
       };
 
+      const connectedAgentRefs = (agent) => {
+        const ordered = [];
+        const seen = new Set();
+        [agent && agent.id, agent && agent.agent_uuid, agent && agent.agent_uri].forEach((value) => {
+          const ref = trimmedString(value);
+          if (!ref) {
+            return;
+          }
+          const key = ref.toLowerCase();
+          if (seen.has(key)) {
+            return;
+          }
+          seen.add(key);
+          ordered.push(ref);
+        });
+        return ordered;
+      };
+
+      const refsFromNode = (node) => {
+        if (!(node instanceof HTMLElement)) {
+          return [];
+        }
+        const rawRefs = trimmedString(node.dataset.connectedAgentRefs);
+        if (rawRefs !== "") {
+          return rawRefs.split("\n")
+            .map((value) => trimmedString(value))
+            .filter((value, index, values) => value !== "" && values.findIndex((entry) => entry.toLowerCase() === value.toLowerCase()) === index);
+        }
+        const fallbackRef = trimmedString(node.dataset.connectedAgentTargetRef);
+        return fallbackRef === "" ? [] : [fallbackRef];
+      };
+
+      const agentMatchesTargetRef = (agent, targetRef) => {
+        const normalizedTargetRef = trimmedString(targetRef).toLowerCase();
+        if (normalizedTargetRef === "") {
+          return false;
+        }
+        return connectedAgentRefs(agent).some((ref) => ref.toLowerCase() === normalizedTargetRef);
+      };
+
       const connectedAgentSkillEntries = (agent) => {
         const ordered = [];
         const seen = new Set();
@@ -1643,7 +1670,7 @@
           return;
         }
         const selectedTargetRef = trimmedString(targetAgentRefInput && targetAgentRefInput.value);
-        const selectedAgent = latestConnectedAgents.find((agent) => connectedAgentTargetRef(agent) === selectedTargetRef);
+        const selectedAgent = latestConnectedAgents.find((agent) => agentMatchesTargetRef(agent, selectedTargetRef));
         const previousSkill = trimmedString(skillNameSelect.value);
         const skillEntries = connectedAgentSkillEntries(selectedAgent);
 
@@ -1713,8 +1740,7 @@
           if (!(node instanceof HTMLButtonElement)) {
             return;
           }
-          const targetRef = trimmedString(node.dataset.connectedAgentTargetRef);
-          const selected = selectedRef !== "" && selectedRef === targetRef;
+          const selected = selectedRef !== "" && refsFromNode(node).some((ref) => ref.toLowerCase() === selectedRef.toLowerCase());
           node.classList.toggle("is-selected", selected);
           node.setAttribute("aria-pressed", selected ? "true" : "false");
         });
@@ -1748,6 +1774,10 @@
           const targetRef = connectedAgentTargetRef(agent);
           if (targetRef) {
             card.dataset.connectedAgentTargetRef = targetRef;
+          }
+          const refs = connectedAgentRefs(agent);
+          if (refs.length > 0) {
+            card.dataset.connectedAgentRefs = refs.join("\n");
           }
           card.dataset.connectedAgentDisplay = connectedAgentDisplayName(agent);
           card.setAttribute("aria-pressed", "false");
@@ -1810,16 +1840,38 @@
         });
 
         if (targetAgentRefInput instanceof HTMLInputElement) {
-          const targetStillExists = nextAgents.some((agent) => connectedAgentTargetRef(agent) === previousTargetRef);
-          targetAgentRefInput.value = targetStillExists ? previousTargetRef : "";
+          const selectedAgent = nextAgents.find((agent) => agentMatchesTargetRef(agent, previousTargetRef));
+          if (selectedAgent) {
+            targetAgentRefInput.value = connectedAgentTargetRef(selectedAgent);
+          } else if (nextAgents.length > 0) {
+            targetAgentRefInput.value = connectedAgentTargetRef(nextAgents[0]);
+          } else {
+            targetAgentRefInput.value = "";
+          }
         }
         syncConnectedAgentSelection();
       };
 
-      const renderConnectedAgents = (agents) => {
-        if (!(connectedAgentsList instanceof HTMLElement) || !(connectedAgentsEmpty instanceof HTMLElement)) {
-          return;
+      const stopConnectedAgentsAutoRefresh = (countdownText) => {
+        if (connectedAgentsAutoRefreshTimer) {
+          window.clearTimeout(connectedAgentsAutoRefreshTimer);
+          connectedAgentsAutoRefreshTimer = 0;
         }
+        setConnectedAgentsRefreshProgress(0);
+        if (typeof countdownText === "string" && countdownText.trim() !== "") {
+          connectedAgentsRefreshNextNodes.forEach((node) => {
+            if (node instanceof HTMLElement) {
+              node.textContent = countdownText;
+            }
+          });
+        }
+      };
+
+      const shouldPollConnectedAgents = () => {
+        return bound && connectedAgentsCount === 0;
+      };
+
+      const renderConnectedAgents = (agents) => {
         const nextAgents = Array.isArray(agents) ? agents : [];
         latestConnectedAgents = nextAgents;
         connectedAgentsCount = nextAgents.length;
@@ -1828,17 +1880,26 @@
         }
         renderManualDispatchTargets(nextAgents);
         syncSubActions(latestHubConnectionState);
-        connectedAgentsList.innerHTML = "";
-        if (nextAgents.length === 0) {
-          connectedAgentsList.hidden = true;
-          connectedAgentsEmpty.hidden = false;
+        if (connectedAgentsList instanceof HTMLElement && connectedAgentsEmpty instanceof HTMLElement) {
+          connectedAgentsList.innerHTML = "";
+          if (nextAgents.length === 0) {
+            connectedAgentsList.hidden = true;
+            connectedAgentsEmpty.hidden = false;
+          } else {
+            nextAgents.forEach((agent) => {
+              connectedAgentsList.appendChild(buildConnectedAgentCard(agent, false));
+            });
+            connectedAgentsEmpty.hidden = true;
+            connectedAgentsList.hidden = false;
+          }
+        }
+        if (shouldPollConnectedAgents()) {
+          scheduleConnectedAgentsAutoRefresh();
           return;
         }
-        nextAgents.forEach((agent) => {
-          connectedAgentsList.appendChild(buildConnectedAgentCard(agent, false));
-        });
-        connectedAgentsEmpty.hidden = true;
-        connectedAgentsList.hidden = false;
+        if (bound) {
+          stopConnectedAgentsAutoRefresh("Auto-refresh paused while agents are connected.");
+        }
       };
 
       const setConnectedAgentsRefreshProgress = (ratio) => {
@@ -1890,6 +1951,10 @@
       let connectedAgentsRefreshTickTimer = 0;
 
       const scheduleConnectedAgentsAutoRefresh = (delayMs = CONNECTED_AGENTS_REFRESH_INTERVAL_MS) => {
+        if (!shouldPollConnectedAgents()) {
+          stopConnectedAgentsAutoRefresh(bound ? "Auto-refresh paused while agents are connected." : "Bind to Molten Hub to refresh connected agents.");
+          return;
+        }
         if (connectedAgentsAutoRefreshTimer) {
           window.clearTimeout(connectedAgentsAutoRefreshTimer);
           connectedAgentsAutoRefreshTimer = 0;
@@ -1919,9 +1984,6 @@
       };
 
       const refreshConnectedAgents = async (_reason = "manual") => {
-        if (!(connectedAgentsList instanceof HTMLElement)) {
-          return;
-        }
         if (connectedAgentsRefreshInFlight) {
           return;
         }
@@ -1952,7 +2014,11 @@
           setConnectedAgentsRefreshState(false, message, true);
         } finally {
           connectedAgentsRefreshInFlight = false;
-          scheduleConnectedAgentsAutoRefresh();
+          if (shouldPollConnectedAgents()) {
+            scheduleConnectedAgentsAutoRefresh();
+          } else if (bound) {
+            stopConnectedAgentsAutoRefresh("Auto-refresh paused while agents are connected.");
+          }
         }
       };
 
@@ -2024,9 +2090,12 @@
           if (!response.ok) {
             throw new Error(`status request failed with ${response.status}`);
           }
-          renderHubConnection(await response.json());
+          const snapshot = await response.json();
+          setLocalConnection(true, "Connected");
+          renderHubConnection(snapshot);
         } catch (error) {
           const message = error instanceof Error ? error.message : "Unable to refresh hub status.";
+          setLocalConnection(false, "Reconnecting...");
           setHubConnection("disconnected", message);
         }
       };
@@ -2061,6 +2130,22 @@
       if (manualDispatchForm instanceof HTMLFormElement) {
         manualDispatchForm.addEventListener("submit", async (event) => {
           event.preventDefault();
+          const selectedTargetRef = trimmedString(targetAgentRefInput && targetAgentRefInput.value);
+          if (selectedTargetRef === "") {
+            setDispatchSubmitStatus("Select a target agent before dispatching.", true);
+            const firstSelectableTarget = manualDispatchTargets instanceof HTMLElement
+              ? manualDispatchTargets.querySelector("[data-connected-agent-target-ref]")
+              : null;
+            if (firstSelectableTarget instanceof HTMLElement) {
+              firstSelectableTarget.focus({ preventScroll: true });
+            }
+            return;
+          }
+          if (skillNameSelect instanceof HTMLSelectElement && !skillNameSelect.disabled && trimmedString(skillNameSelect.value) === "") {
+            setDispatchSubmitStatus("Select a skill for the chosen agent before dispatching.", true);
+            skillNameSelect.focus({ preventScroll: true });
+            return;
+          }
           if (!validateSkillPayload()) {
             if (skillPayloadInput instanceof HTMLTextAreaElement) {
               skillPayloadInput.reportValidity();
@@ -2113,16 +2198,20 @@
       if (skillNameSelect instanceof HTMLSelectElement) {
         skillNameSelect.addEventListener("change", updateSkillNameOptions);
       }
+      initRuntimeEventCards();
       renderConnectedAgents(parseInitialConnectedAgents());
 
       setConnectedAgentsRefreshProgress(0);
       if (!bound) {
         setConnectedAgentsRefreshCountdown(CONNECTED_AGENTS_REFRESH_INTERVAL_MS, false);
         setConnectedAgentsRefreshState(false, "Bind to Molten Hub to refresh connected agents.");
-      } else {
+      } else if (shouldPollConnectedAgents()) {
         startConnectedAgentsRefreshTicker();
         scheduleConnectedAgentsAutoRefresh();
         void refreshConnectedAgents("initial");
+      } else {
+        stopConnectedAgentsAutoRefresh("Auto-refresh paused while agents are connected.");
+        setConnectedAgentsRefreshState(false, "");
       }
     })();
   </script>

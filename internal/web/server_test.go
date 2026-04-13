@@ -361,7 +361,13 @@ func TestHandleIndexRendersConsoleTitleAndSubtitle(t *testing.T) {
 	if !strings.Contains(body, `<title>Molten Hub Console</title>`) {
 		t.Fatalf("expected document title to be Molten Hub Console, body=%s", body)
 	}
-	if !strings.Contains(body, `>Molten Hub Console</p>`) {
+	if !strings.Contains(body, `class="brand-logo rotating-brand-logo brand-logo-visible"`) {
+		t.Fatalf("expected page header logo lockup, body=%s", body)
+	}
+	if !strings.Contains(body, `src="/static/logo.svg"`) {
+		t.Fatalf("expected page header to use the bundled logo asset, body=%s", body)
+	}
+	if !strings.Contains(body, `>Molten Hub Console</div>`) {
 		t.Fatalf("expected page header title copy, body=%s", body)
 	}
 	if !strings.Contains(body, `>Dispatch work to your quiet army.</p>`) {
@@ -483,6 +489,9 @@ func TestHandleIndexShowsBoundProfileState(t *testing.T) {
 	if !strings.Contains(body, `id="hub-conn-item"`) {
 		t.Fatalf("expected connection indicator in page, body=%s", body)
 	}
+	if !strings.Contains(body, `id="local-conn-item"`) {
+		t.Fatalf("expected local connection indicator in page, body=%s", body)
+	}
 	if strings.Contains(body, "Awaiting Bind") {
 		t.Fatalf("did not expect removed bind state section, body=%s", body)
 	}
@@ -513,8 +522,26 @@ func TestHandleIndexShowsBoundProfileState(t *testing.T) {
 	if strings.Contains(body, `id="open-agent-settings"`) {
 		t.Fatalf("did not expect removed agent settings section button, body=%s", body)
 	}
-	if !strings.Contains(body, ">Manual Dispatch<") {
+	if !strings.Contains(body, ">Dispatch<") {
 		t.Fatalf("expected sub-actions when bound and connected, body=%s", body)
+	}
+	if strings.Contains(body, ">Manual Dispatch<") {
+		t.Fatalf("did not expect previous manual dispatch heading, body=%s", body)
+	}
+	if !strings.Contains(body, "<legend>Agents</legend>") {
+		t.Fatalf("expected connected agent legend copy, body=%s", body)
+	}
+	if !strings.Contains(body, "Skills") {
+		t.Fatalf("expected skills field label, body=%s", body)
+	}
+	if !strings.Contains(body, "<span>Payload</span>") {
+		t.Fatalf("expected payload field label, body=%s", body)
+	}
+	if !strings.Contains(body, "Auto-select the first skill of that agent.") {
+		t.Fatalf("expected skill auto-select hint, body=%s", body)
+	}
+	if strings.Contains(body, "Format is detected automatically.") {
+		t.Fatalf("did not expect removed payload format hint copy, body=%s", body)
 	}
 	if !strings.Contains(body, `class="grid manual-dispatch-grid"`) {
 		t.Fatalf("expected manual dispatch section to render full-width grid class, body=%s", body)
@@ -555,6 +582,9 @@ func TestHandleIndexShowsBoundProfileState(t *testing.T) {
 	if !strings.Contains(body, `Detected markdown payload.`) {
 		t.Fatalf("expected markdown detection status messaging in client script, body=%s", body)
 	}
+	if !strings.Contains(body, `targetAgentRefInput.value = connectedAgentTargetRef(nextAgents[0]);`) {
+		t.Fatalf("expected first connected agent auto-selection logic, body=%s", body)
+	}
 	if strings.Contains(body, `name="timeout_seconds"`) {
 		t.Fatalf("did not expect manual dispatch timeout field, body=%s", body)
 	}
@@ -569,6 +599,12 @@ func TestHandleIndexShowsBoundProfileState(t *testing.T) {
 	}
 	if !strings.Contains(body, `await fetch("/api/dispatch"`) {
 		t.Fatalf("expected manual dispatch async API submit hook, body=%s", body)
+	}
+	if !strings.Contains(body, `Select a target agent before dispatching.`) {
+		t.Fatalf("expected client-side empty-target dispatch guard, body=%s", body)
+	}
+	if !strings.Contains(body, `Select a skill for the chosen agent before dispatching.`) {
+		t.Fatalf("expected client-side empty-skill dispatch guard, body=%s", body)
 	}
 	if !strings.Contains(body, `skillPayloadInput.value = "";`) {
 		t.Fatalf("expected async submit success path to clear payload input, body=%s", body)
@@ -930,11 +966,58 @@ func TestHandleIndexShowsConnectAgentsPanelWhenNoConnectedAgents(t *testing.T) {
 	if !strings.Contains(body, `class="sub-actions-hub-link" href="https://app.molten.bot/hub"`) {
 		t.Fatalf("expected connect-agents panel link to Molten Bot Hub dashboard, body=%s", body)
 	}
-	if !strings.Contains(body, `id="sub-actions-notice-refresh"`) {
-		t.Fatalf("expected notice panel manual refresh control, body=%s", body)
+	if strings.Contains(body, `id="sub-actions-notice-refresh"`) {
+		t.Fatalf("did not expect notice panel refresh control on the main page, body=%s", body)
 	}
-	if !strings.Contains(body, `id="sub-actions-notice-refresh-progress"`) {
-		t.Fatalf("expected notice panel refresh loading bar, body=%s", body)
+	if !strings.Contains(body, `id="agent-settings-refresh-connected-agents"`) {
+		t.Fatalf("expected settings modal refresh control for connected agents, body=%s", body)
+	}
+}
+
+func TestHandleIndexOmitsPendingTasksPanelFromMainUI(t *testing.T) {
+	t.Parallel()
+
+	server, err := New(&stubService{
+		state: app.AppState{
+			Settings: app.DefaultSettings(),
+			Connection: app.ConnectionState{
+				Status:    app.ConnectionStatusConnected,
+				Transport: app.ConnectionTransportHTTP,
+			},
+			Session: app.Session{
+				AgentToken: "agent-token",
+			},
+			PendingTasks: []app.PendingTask{
+				{
+					ID:                "task-1",
+					OriginalSkillName: "run_task",
+					TargetAgentUUID:   "worker-uuid",
+					LogPath:           "/tmp/logs/task-1.log",
+					ExpiresAt:         time.Now().Add(time.Minute),
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 response, got %d", rec.Code)
+	}
+	if strings.Contains(body, ">Pending Tasks<") {
+		t.Fatalf("did not expect pending tasks panel in main UI, body=%s", body)
+	}
+	if strings.Contains(body, "No tasks are waiting on downstream results.") {
+		t.Fatalf("did not expect pending tasks empty state in main UI, body=%s", body)
+	}
+	if !strings.Contains(body, ">Queued Follow-Ups<") {
+		t.Fatalf("expected follow-up panel to remain visible, body=%s", body)
 	}
 }
 
@@ -994,6 +1077,18 @@ func TestHandleIndexRendersBottomDockAndSettingsDialogForBoundSession(t *testing
 	if !strings.Contains(body, `id="agent-settings-modal-close"`) {
 		t.Fatalf("expected settings dialog close control, body=%s", body)
 	}
+	if !strings.Contains(body, `id="agent-settings-refresh-connected-agents"`) {
+		t.Fatalf("expected connected-agents refresh button inside settings dialog, body=%s", body)
+	}
+	if !strings.Contains(body, `id="agent-settings-refresh-connected-agents-progress"`) {
+		t.Fatalf("expected connected-agents refresh progress inside settings dialog, body=%s", body)
+	}
+	if !strings.Contains(body, `id="agent-settings-refresh-connected-agents-next"`) {
+		t.Fatalf("expected connected-agents refresh countdown inside settings dialog, body=%s", body)
+	}
+	if !strings.Contains(body, `id="agent-settings-refresh-connected-agents-status"`) {
+		t.Fatalf("expected connected-agents refresh status inside settings dialog, body=%s", body)
+	}
 	if !strings.Contains(body, `const agentSettingsDockButton = document.getElementById("agent-settings-dock-button");`) {
 		t.Fatalf("expected settings dock JS hook, body=%s", body)
 	}
@@ -1017,6 +1112,70 @@ func TestHandleIndexRendersBottomDockAndSettingsDialogForBoundSession(t *testing
 	}
 	if !strings.Contains(body, `const setAgentSettingsModalOpen = (open, returnFocus = false) => {`) {
 		t.Fatalf("expected settings dialog open/close handler, body=%s", body)
+	}
+}
+
+func TestHandleIndexMinimizesInfoRecentEventsAndKeepsErrorsOpen(t *testing.T) {
+	t.Parallel()
+
+	server, err := New(&stubService{
+		state: app.AppState{
+			Settings: app.DefaultSettings(),
+			RecentEvents: []app.RuntimeEvent{
+				{
+					Title:  "Task dispatched",
+					Level:  "info",
+					Detail: "Queued code_for_me for moltenbot/jef/codex-beast",
+					TaskID: "task-123",
+					LogPath: ".moltenhub/logs/task-123.log",
+					At:     time.Unix(1, 0).UTC(),
+				},
+				{
+					Title:  "Dispatch failed",
+					Level:  "error",
+					Detail: "worker panic: boom",
+					TaskID: "task-456",
+					LogPath: ".moltenhub/logs/task-456.log",
+					At:     time.Unix(2, 0).UTC(),
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 response, got %d", rec.Code)
+	}
+	if !strings.Contains(body, `class="card runtime-event-card" data-runtime-event-card`) {
+		t.Fatalf("expected recent event cards to use collapsible card class, body=%s", body)
+	}
+	if !strings.Contains(body, `data-runtime-event-toggle aria-expanded="false">Open</button>`) {
+		t.Fatalf("expected info event toggle to render closed by default, body=%s", body)
+	}
+	if !strings.Contains(body, `class="runtime-event-card-body" data-runtime-event-body hidden`) {
+		t.Fatalf("expected info event body to render hidden by default, body=%s", body)
+	}
+	if !strings.Contains(body, `data-runtime-event-toggle aria-expanded="true">Close</button>`) {
+		t.Fatalf("expected error event toggle to render open by default, body=%s", body)
+	}
+	if !strings.Contains(body, `const runtimeEventCards = Array.from(document.querySelectorAll("[data-runtime-event-card]"));`) {
+		t.Fatalf("expected runtime event JS collection hook, body=%s", body)
+	}
+	if !strings.Contains(body, `const initRuntimeEventCards = () => {`) {
+		t.Fatalf("expected runtime event initialization helper, body=%s", body)
+	}
+	if !strings.Contains(body, `toggle.textContent = nextExpanded ? "Close" : "Open";`) {
+		t.Fatalf("expected runtime event toggle button copy to swap between open and close, body=%s", body)
+	}
+	if !strings.Contains(body, `initRuntimeEventCards();`) {
+		t.Fatalf("expected runtime event toggle initialization on page load, body=%s", body)
 	}
 }
 
@@ -1058,6 +1217,15 @@ func TestHandleStylesEnsuresHiddenModalBackdropsStayHidden(t *testing.T) {
 	}
 	if !strings.Contains(body, `.shell button.dispatch-task-button {`) {
 		t.Fatalf("expected dispatch task button style override for action button look, body=%s", body)
+	}
+	if !strings.Contains(body, `.runtime-event-card-header {`) {
+		t.Fatalf("expected runtime event card header layout styles, body=%s", body)
+	}
+	if !strings.Contains(body, `.runtime-event-card-toggle {`) {
+		t.Fatalf("expected runtime event toggle button styles, body=%s", body)
+	}
+	if !strings.Contains(body, `.runtime-event-card-body[hidden] {`) {
+		t.Fatalf("expected runtime event hidden state styles, body=%s", body)
 	}
 	if !strings.Contains(body, `display: none !important;`) {
 		t.Fatalf("expected explicit hidden display override, body=%s", body)
@@ -1156,7 +1324,7 @@ func TestHandleIndexHidesSubActionsUntilBoundAndConnected(t *testing.T) {
 	if strings.Contains(body, ">3. Connected Agents<") {
 		t.Fatalf("did not expect removed connected agents section, body=%s", body)
 	}
-	if !strings.Contains(body, ">Manual Dispatch<") {
+	if !strings.Contains(body, ">Dispatch<") {
 		t.Fatalf("expected manual dispatch markup to remain available for client-side reveal, body=%s", body)
 	}
 	if !strings.Contains(body, "until this runtime is bound to Molten Hub and connectivity is working") {
@@ -1741,25 +1909,19 @@ func TestHandleIndexRendersConnectedAgentsRefreshPanel(t *testing.T) {
 	server.Handler().ServeHTTP(rec, req)
 
 	body := rec.Body.String()
-	if !strings.Contains(body, ">Connected Agents<") {
-		t.Fatalf("expected connected agents panel heading, body=%s", body)
+	if strings.Contains(body, ">Connected Agents<") {
+		t.Fatalf("did not expect connected agents panel on the main page, body=%s", body)
 	}
 	if strings.Contains(body, "Connected Agent Directory") {
 		t.Fatalf("did not expect deprecated connected agent directory heading, body=%s", body)
 	}
-	if !strings.Contains(body, `id="connected-agents-refresh"`) {
-		t.Fatalf("expected connected agents refresh control, body=%s", body)
+	if strings.Contains(body, `id="connected-agents-refresh"`) {
+		t.Fatalf("did not expect main-page connected agents refresh control, body=%s", body)
 	}
-	if !strings.Contains(body, `id="connected-agents-refresh-progress"`) {
-		t.Fatalf("expected connected agents refresh loading bar, body=%s", body)
+	if !strings.Contains(body, `id="agent-settings-refresh-connected-agents"`) {
+		t.Fatalf("expected connected agents refresh control in settings modal, body=%s", body)
 	}
-	if !strings.Contains(body, `id="connected-agents-refresh-next"`) {
-		t.Fatalf("expected connected agents auto-refresh countdown label, body=%s", body)
-	}
-	if !strings.Contains(body, `id="connected-agents-list"`) {
-		t.Fatalf("expected connected agents list container, body=%s", body)
-	}
-	if !strings.Contains(body, `class="connected-agent-card"`) {
+	if !strings.Contains(body, `class="connected-agent-card connected-agent-card-button"`) {
 		t.Fatalf("expected connected agent card layout, body=%s", body)
 	}
 	if !strings.Contains(body, "@dispatcher") {
@@ -1783,6 +1945,9 @@ func TestHandleIndexRendersConnectedAgentsRefreshPanel(t *testing.T) {
 	if !strings.Contains(body, `data-connected-agent-target-ref="dispatcher"`) {
 		t.Fatalf("expected connected agent target ref on selectable card, body=%s", body)
 	}
+	if !strings.Contains(body, `data-connected-agent-refs="dispatcher`) {
+		t.Fatalf("expected connected agent reference aliases on selectable card, body=%s", body)
+	}
 	if !strings.Contains(body, `data-connected-agent-display="Dispatcher"`) {
 		t.Fatalf("expected connected agent display name in selectable card, body=%s", body)
 	}
@@ -1792,14 +1957,29 @@ func TestHandleIndexRendersConnectedAgentsRefreshPanel(t *testing.T) {
 	if !strings.Contains(body, `const CONNECTED_AGENTS_REFRESH_INTERVAL_MS = 30000;`) {
 		t.Fatalf("expected 30s connected agents refresh interval constant, body=%s", body)
 	}
+	if !strings.Contains(body, `const shouldPollConnectedAgents = () => {`) {
+		t.Fatalf("expected connected agents polling guard helper, body=%s", body)
+	}
+	if !strings.Contains(body, `return bound && connectedAgentsCount === 0;`) {
+		t.Fatalf("expected polling guard to stop once agents exist, body=%s", body)
+	}
 	if !strings.Contains(body, `const scheduleConnectedAgentsAutoRefresh = (delayMs = CONNECTED_AGENTS_REFRESH_INTERVAL_MS) => {`) {
 		t.Fatalf("expected connected agents auto-refresh scheduler, body=%s", body)
+	}
+	if !strings.Contains(body, `Auto-refresh paused while agents are connected.`) {
+		t.Fatalf("expected paused auto-refresh copy once agents exist, body=%s", body)
 	}
 	if !strings.Contains(body, `const syncConnectedAgentSelection = () => {`) {
 		t.Fatalf("expected connected agent card selection sync helper, body=%s", body)
 	}
 	if !strings.Contains(body, `const connectedAgentSkillEntries = (agent) => {`) {
 		t.Fatalf("expected connected-agent skill extraction helper, body=%s", body)
+	}
+	if !strings.Contains(body, `const connectedAgentRefs = (agent) => {`) {
+		t.Fatalf("expected connected-agent alias helper, body=%s", body)
+	}
+	if !strings.Contains(body, `const agentMatchesTargetRef = (agent, targetRef) => {`) {
+		t.Fatalf("expected connected-agent target matching helper, body=%s", body)
 	}
 	if !strings.Contains(body, `const updateSkillNameOptions = () => {`) {
 		t.Fatalf("expected skill dropdown sync helper, body=%s", body)
@@ -1818,6 +1998,9 @@ func TestHandleIndexRendersConnectedAgentsRefreshPanel(t *testing.T) {
 	}
 	if !strings.Contains(body, `setConnectedAgentsRefreshState(false, "");`) {
 		t.Fatalf("expected refresh completion to clear the status text, body=%s", body)
+	}
+	if !strings.Contains(body, `} else if (shouldPollConnectedAgents()) {`) {
+		t.Fatalf("expected bound-session refresh bootstrapping to depend on missing agents, body=%s", body)
 	}
 	if strings.Contains(body, "toLocaleTimeString") {
 		t.Fatalf("did not expect connected agents refresh timestamp formatting, body=%s", body)

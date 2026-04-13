@@ -1515,6 +1515,30 @@ func TestDispatchFromUIInfersDefaultSkillForTargetAgent(t *testing.T) {
 	}
 }
 
+func TestDispatchFromUIRequiresSkillNameWhenTargetAgentRefIsBlank(t *testing.T) {
+	t.Parallel()
+
+	service, _ := newTestService(t)
+	err := service.store.Update(func(state *AppState) error {
+		state.Session.AgentToken = "agent-token"
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("seed store: %v", err)
+	}
+
+	_, err = service.DispatchFromUI(context.Background(), DispatchRequest{
+		RequestID:      "ui-req",
+		TargetAgentRef: "   ",
+	})
+	if err == nil {
+		t.Fatal("expected validation error for empty target + skill")
+	}
+	if got := err.Error(); got != "skill_name is required when target_agent_ref is empty" {
+		t.Fatalf("unexpected error: %q", got)
+	}
+}
+
 func TestHandleSkillRequestAcceptsTargetAgentRefViaInput(t *testing.T) {
 	t.Parallel()
 
@@ -1578,6 +1602,55 @@ func TestHandleSkillRequestAcceptsTargetAgentRefViaInput(t *testing.T) {
 	}
 	if got := state.PendingTasks[0].OriginalSkillName; got != "run_task" {
 		t.Fatalf("unexpected pending task skill name: %#v", state.PendingTasks[0])
+	}
+}
+
+func TestHandleSkillRequestRequiresSkillNameWhenTargetAgentRefIsBlank(t *testing.T) {
+	t.Parallel()
+
+	service, fake := newTestService(t)
+	err := service.store.Update(func(state *AppState) error {
+		state.Session.AgentToken = "agent-token"
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("seed store: %v", err)
+	}
+
+	message := hub.PullResponse{
+		DeliveryID:    "delivery-1",
+		FromAgentUUID: "caller-uuid",
+		OpenClawMessage: hub.OpenClawMessage{
+			Type:      "skill_request",
+			SkillName: dispatchSkillName,
+			RequestID: "parent-req",
+			Payload: map[string]any{
+				"target_agent_ref": "   ",
+			},
+		},
+	}
+
+	if err := service.handleInboundMessage(context.Background(), message); err != nil {
+		t.Fatalf("handle inbound message: %v", err)
+	}
+
+	if len(fake.publishCalls) != 1 {
+		t.Fatalf("expected one caller failure publish, got %d", len(fake.publishCalls))
+	}
+	failurePayload, ok := fake.publishCalls[0].Message.Payload.(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected failure payload type: %T", fake.publishCalls[0].Message.Payload)
+	}
+	if got := failurePayload["error"]; got != "skill_name is required when target_agent_ref is empty" {
+		t.Fatalf("unexpected failure error payload: %#v", got)
+	}
+	if got := failurePayload["status"]; got != "failed" {
+		t.Fatalf("unexpected failure status payload: %#v", got)
+	}
+
+	state := service.store.Snapshot()
+	if len(state.FollowUpTasks) != 1 {
+		t.Fatalf("expected follow-up to be queued, got %d", len(state.FollowUpTasks))
 	}
 }
 
@@ -2104,6 +2177,36 @@ func TestWaitForHubReachableRetriesPingUntilLive(t *testing.T) {
 	}
 }
 
+func TestNoteRealtimeFallbackKeepsHubReachableWhileWebsocketFallsBack(t *testing.T) {
+	t.Parallel()
+
+	service, _ := newTestService(t)
+	err := service.store.Update(func(state *AppState) error {
+		state.Session.AgentToken = "agent-token"
+		state.Session.APIBase = "https://na.hub.molten.bot/v1"
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("seed store: %v", err)
+	}
+
+	service.noteRealtimeFallback(errors.New("websocket unavailable"))
+
+	state := service.store.Snapshot()
+	if state.Connection.Status != ConnectionStatusDisconnected {
+		t.Fatalf("expected disconnected status during fallback, got %#v", state.Connection)
+	}
+	if state.Connection.Transport != ConnectionTransportReachable {
+		t.Fatalf("expected reachable transport during fallback, got %#v", state.Connection)
+	}
+	if state.Connection.Error != "websocket unavailable" {
+		t.Fatalf("unexpected websocket fallback error: %#v", state.Connection)
+	}
+	if !strings.Contains(state.Connection.Detail, "falling back to HTTP long polling") {
+		t.Fatalf("unexpected websocket fallback detail: %#v", state.Connection)
+	}
+}
+
 func TestRunHubLoopFallsBackToHTTPLongPollWhenWebsocketUnavailable(t *testing.T) {
 	t.Parallel()
 
@@ -2158,6 +2261,9 @@ func TestRunHubLoopFallsBackToHTTPLongPollWhenWebsocketUnavailable(t *testing.T)
 	}
 	if state.Connection.Transport != ConnectionTransportHTTPLong {
 		t.Fatalf("expected http long-poll transport after websocket fallback, got %#v", state.Connection)
+	}
+	if state.Connection.Error != "" {
+		t.Fatalf("expected successful HTTP fallback to clear connection error, got %#v", state.Connection)
 	}
 }
 
@@ -2555,8 +2661,189 @@ func TestRefreshConnectedAgentsAcceptsTopLevelAgentsCatalog(t *testing.T) {
 	if got, want := agents[0].Name, "Peer Agent"; got != want {
 		t.Fatalf("agent name = %q, want %q", got, want)
 	}
+	if got, want := agents[0].Emoji, "🛠"; got != want {
+		t.Fatalf("agent emoji = %q, want %q", got, want)
+	}
 	if len(agents[0].AdvertisedSkills) != 1 || agents[0].AdvertisedSkills[0].Name != "review_failure_logs" {
 		t.Fatalf("expected advertised skills from nested agent metadata, got %#v", agents[0].AdvertisedSkills)
+	}
+}
+
+func TestRefreshConnectedAgentsUsesProfileAvatarEmojiAlias(t *testing.T) {
+	t.Parallel()
+
+	service, fake := newTestService(t)
+	fake.capabilitiesResponse = map[string]any{
+		"peer_skill_catalog": []any{
+			map[string]any{
+				"agent_uuid": "peer-uuid",
+				"agent_uri":  "molten://agent/peer",
+				"handle":     "peer-agent",
+				"profile": map[string]any{
+					"display_name": "Peer Agent",
+					"avatar_emoji": "🚀",
+				},
+			},
+		},
+	}
+	if err := service.store.Update(func(state *AppState) error {
+		state.Session.AgentToken = "agent-token"
+		state.Session.AgentUUID = "self-uuid"
+		state.Session.AgentURI = "molten://agent/self"
+		state.Session.Handle = "self-agent"
+		state.Session.APIBase = "https://na.hub.molten.bot/v1"
+		return nil
+	}); err != nil {
+		t.Fatalf("seed store: %v", err)
+	}
+
+	agents, err := service.RefreshConnectedAgents(context.Background())
+	if err != nil {
+		t.Fatalf("refresh connected agents: %v", err)
+	}
+	if len(agents) != 1 {
+		t.Fatalf("expected one connected agent, got %#v", agents)
+	}
+	if got, want := agents[0].Name, "Peer Agent"; got != want {
+		t.Fatalf("agent name = %q, want %q", got, want)
+	}
+	if got, want := agents[0].Emoji, "🚀"; got != want {
+		t.Fatalf("agent emoji = %q, want %q", got, want)
+	}
+}
+
+func TestRefreshConnectedAgentsUsesIdentityProfileEmojiAliases(t *testing.T) {
+	t.Parallel()
+
+	service, fake := newTestService(t)
+	fake.capabilitiesResponse = map[string]any{
+		"peer_skill_catalog": []any{
+			map[string]any{
+				"agent_uuid": "peer-uuid",
+				"agent_uri":  "molten://agent/peer",
+				"handle":     "peer-agent",
+				"identity": map[string]any{
+					"profile": map[string]any{
+						"display_name": "Peer Agent",
+						"icon_emoji":   "🧪",
+					},
+				},
+			},
+		},
+	}
+	if err := service.store.Update(func(state *AppState) error {
+		state.Session.AgentToken = "agent-token"
+		state.Session.AgentUUID = "self-uuid"
+		state.Session.AgentURI = "molten://agent/self"
+		state.Session.Handle = "self-agent"
+		state.Session.APIBase = "https://na.hub.molten.bot/v1"
+		return nil
+	}); err != nil {
+		t.Fatalf("seed store: %v", err)
+	}
+
+	agents, err := service.RefreshConnectedAgents(context.Background())
+	if err != nil {
+		t.Fatalf("refresh connected agents: %v", err)
+	}
+	if len(agents) != 1 {
+		t.Fatalf("expected one connected agent, got %#v", agents)
+	}
+	if got, want := agents[0].Name, "Peer Agent"; got != want {
+		t.Fatalf("agent name = %q, want %q", got, want)
+	}
+	if got, want := agents[0].Emoji, "🧪"; got != want {
+		t.Fatalf("agent emoji = %q, want %q", got, want)
+	}
+}
+
+func TestRefreshConnectedAgentsUsesNestedAgentProfileCamelCaseEmojiAlias(t *testing.T) {
+	t.Parallel()
+
+	service, fake := newTestService(t)
+	fake.capabilitiesResponse = map[string]any{
+		"peer_skill_catalog": []any{
+			map[string]any{
+				"agent": map[string]any{
+					"agent_uuid": "peer-uuid",
+					"agent_uri":  "molten://agent/peer",
+					"handle":     "peer-agent",
+					"agent_profile": map[string]any{
+						"display_name": "Peer Agent",
+						"avatarEmoji":  "🛰",
+					},
+				},
+			},
+		},
+	}
+	if err := service.store.Update(func(state *AppState) error {
+		state.Session.AgentToken = "agent-token"
+		state.Session.AgentUUID = "self-uuid"
+		state.Session.AgentURI = "molten://agent/self"
+		state.Session.Handle = "self-agent"
+		state.Session.APIBase = "https://na.hub.molten.bot/v1"
+		return nil
+	}); err != nil {
+		t.Fatalf("seed store: %v", err)
+	}
+
+	agents, err := service.RefreshConnectedAgents(context.Background())
+	if err != nil {
+		t.Fatalf("refresh connected agents: %v", err)
+	}
+	if len(agents) != 1 {
+		t.Fatalf("expected one connected agent, got %#v", agents)
+	}
+	if got, want := agents[0].Name, "Peer Agent"; got != want {
+		t.Fatalf("agent name = %q, want %q", got, want)
+	}
+	if got, want := agents[0].Emoji, "🛰"; got != want {
+		t.Fatalf("agent emoji = %q, want %q", got, want)
+	}
+}
+
+func TestRefreshConnectedAgentsUsesNestedAvatarEmojiObject(t *testing.T) {
+	t.Parallel()
+
+	service, fake := newTestService(t)
+	fake.capabilitiesResponse = map[string]any{
+		"peer_skill_catalog": []any{
+			map[string]any{
+				"agent_uuid": "peer-uuid",
+				"agent_uri":  "molten://agent/peer",
+				"handle":     "peer-agent",
+				"profile": map[string]any{
+					"display_name": "Peer Agent",
+					"avatar": map[string]any{
+						"emoji": "🔥",
+					},
+				},
+			},
+		},
+	}
+	if err := service.store.Update(func(state *AppState) error {
+		state.Session.AgentToken = "agent-token"
+		state.Session.AgentUUID = "self-uuid"
+		state.Session.AgentURI = "molten://agent/self"
+		state.Session.Handle = "self-agent"
+		state.Session.APIBase = "https://na.hub.molten.bot/v1"
+		return nil
+	}); err != nil {
+		t.Fatalf("seed store: %v", err)
+	}
+
+	agents, err := service.RefreshConnectedAgents(context.Background())
+	if err != nil {
+		t.Fatalf("refresh connected agents: %v", err)
+	}
+	if len(agents) != 1 {
+		t.Fatalf("expected one connected agent, got %#v", agents)
+	}
+	if got, want := agents[0].Name, "Peer Agent"; got != want {
+		t.Fatalf("agent name = %q, want %q", got, want)
+	}
+	if got, want := agents[0].Emoji, "🔥"; got != want {
+		t.Fatalf("agent emoji = %q, want %q", got, want)
 	}
 }
 
