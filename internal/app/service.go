@@ -809,10 +809,10 @@ func (s *Service) handleSkillRequest(ctx context.Context, message hub.PullRespon
 	req := DispatchRequest{
 		RequestID:      message.OpenClawMessage.RequestID,
 		TargetAgentRef: payload.TargetAgentRef(),
-		SkillName:      payload.SkillName,
+		SkillName:      payload.RequestedSkillName(),
 		Repo:           payload.Repo,
 		LogPaths:       payload.LogPaths,
-		Payload:        payload.Payload,
+		Payload:        payload.TaskPayload(),
 		PayloadFormat:  payload.PayloadFormat,
 	}
 	target, req, err := s.prepareDispatchRequest(state, req)
@@ -1362,10 +1362,12 @@ type dispatchPayload struct {
 	TargetAgentUUID string   `json:"target_agent_uuid"`
 	TargetAgentURI  string   `json:"target_agent_uri"`
 	SkillName       string   `json:"skill_name"`
+	SelectedTask    string   `json:"selected_task"`
 	Repo            string   `json:"repo"`
 	LogPaths        []string `json:"log_paths"`
 	Payload         any      `json:"payload"`
 	PayloadFormat   string   `json:"payload_format"`
+	raw             map[string]any
 }
 
 func (p *dispatchPayload) FromAny(value any) error {
@@ -1398,14 +1400,89 @@ func (p *dispatchPayload) fromJSONString(raw string) error {
 }
 
 func (p *dispatchPayload) fromJSONBytes(data []byte) error {
-	if err := json.Unmarshal(data, p); err != nil {
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
 		return fmt.Errorf("dispatch payload must be a JSON object: %w", err)
+	}
+	p.fromMap(raw)
+	return nil
+}
+
+func (p *dispatchPayload) fromMap(raw map[string]any) {
+	*p = dispatchPayload{
+		AgentRef:        stringFromMap(raw, "target_agent_ref", "targetAgentRef", "agent_ref", "agentRef"),
+		TargetAgentUUID: stringFromMap(raw, "target_agent_uuid", "targetAgentUUID"),
+		TargetAgentURI:  stringFromMap(raw, "target_agent_uri", "targetAgentURI"),
+		SkillName:       stringFromMap(raw, "skill_name", "skillName"),
+		SelectedTask:    stringFromMap(raw, "selected_task", "selectedTask", "task_name", "taskName", "task"),
+		Repo:            stringFromMap(raw, "repo"),
+		LogPaths:        support.StringSliceFromAny(firstMapValue(raw, "log_paths", "logPaths")),
+		Payload:         firstMapValue(raw, "payload"),
+		PayloadFormat:   stringFromMap(raw, "payload_format", "payloadFormat"),
+		raw:             raw,
+	}
+}
+
+func firstMapValue(values map[string]any, keys ...string) any {
+	if values == nil {
+		return nil
+	}
+	for _, key := range keys {
+		value, ok := values[key]
+		if ok {
+			return value
+		}
 	}
 	return nil
 }
 
 func (p dispatchPayload) TargetAgentRef() string {
 	return support.FirstNonEmptyString(p.AgentRef, p.TargetAgentUUID, p.TargetAgentURI)
+}
+
+func (p dispatchPayload) RequestedSkillName() string {
+	return support.FirstNonEmptyString(p.SkillName, p.SelectedTask)
+}
+
+func (p dispatchPayload) TaskPayload() any {
+	if p.Payload != nil {
+		return p.Payload
+	}
+	if len(p.raw) == 0 {
+		return nil
+	}
+
+	inline := make(map[string]any)
+	for key, value := range p.raw {
+		if dispatchPayloadControlField(key) {
+			continue
+		}
+		inline[key] = value
+	}
+	if len(inline) == 0 {
+		return nil
+	}
+	return inline
+}
+
+func dispatchPayloadControlField(key string) bool {
+	switch strings.ToLower(strings.TrimSpace(key)) {
+	case "target_agent_ref", "targetagentref",
+		"agent_ref", "agentref",
+		"target_agent_uuid", "targetagentuuid",
+		"target_agent_uri", "targetagenturi",
+		"skill_name", "skillname",
+		"selected_task", "selectedtask",
+		"task_name", "taskname",
+		"task",
+		"repo",
+		"log_paths", "logpaths",
+		"payload",
+		"payload_format", "payloadformat":
+		return true
+	default:
+		return false
+	}
 }
 
 func normalizePayload(payload any, repo string, logPaths []string) map[string]any {
