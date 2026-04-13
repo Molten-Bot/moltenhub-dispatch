@@ -1030,16 +1030,17 @@ func TestHandleDownstreamFailureSendsDetailedFailureAndQueuesFollowUp(t *testing
 		}
 		state.PendingTasks = []PendingTask{
 			{
-				ID:                "task-1",
-				ParentRequestID:   "parent-req",
-				ChildRequestID:    "child-req",
-				OriginalSkillName: "run_task",
-				CallerAgentUUID:   "caller-uuid",
-				CallerRequestID:   "parent-req",
-				Repo:              "/tmp/repo",
-				LogPath:           filepath.Join(service.settings.DataDir, "logs", "task-1.log"),
-				CreatedAt:         time.Now().Add(-time.Minute),
-				ExpiresAt:         time.Now().Add(time.Minute),
+				ID:                  "task-1",
+				ParentRequestID:     "parent-req",
+				ChildRequestID:      "child-req",
+				OriginalSkillName:   "run_task",
+				CallerAgentUUID:     "caller-uuid",
+				CallerRequestID:     "parent-req",
+				Repo:                "/tmp/repo",
+				LogPath:             filepath.Join(service.settings.DataDir, "logs", "task-1.log"),
+				CreatedAt:           time.Now().Add(-time.Minute),
+				ExpiresAt:           time.Now().Add(time.Minute),
+				ExecutionRetryCount: 1,
 				DispatchPayload: map[string]any{
 					"repo":      "/tmp/repo",
 					"log_paths": []string{"/tmp/original.log", "/tmp/original.log"},
@@ -1171,6 +1172,129 @@ func TestHandleDownstreamFailureSendsDetailedFailureAndQueuesFollowUp(t *testing
 	}
 }
 
+func TestHandleDownstreamFailureRetriesOnceBeforeFinalFailureHandling(t *testing.T) {
+	t.Parallel()
+
+	service, fake := newTestService(t)
+	err := service.store.Update(func(state *AppState) error {
+		state.Session.AgentToken = "agent-token"
+		state.Session.AgentUUID = "self-uuid"
+		state.Session.AgentURI = "molten://dispatch/self"
+		state.ConnectedAgents = []ConnectedAgent{
+			{
+				ID:              "reviewer",
+				Name:            "reviewer",
+				AgentUUID:       "reviewer-uuid",
+				FailureReviewer: true,
+			},
+		}
+		state.PendingTasks = []PendingTask{
+			{
+				ID:                "task-1",
+				ParentRequestID:   "parent-req",
+				ChildRequestID:    "child-req",
+				OriginalSkillName: "run_task",
+				TargetAgentUUID:   "worker-uuid",
+				CallerAgentUUID:   "caller-uuid",
+				CallerRequestID:   "parent-req",
+				Repo:              "/tmp/repo",
+				LogPath:           filepath.Join(service.settings.DataDir, "logs", "task-1.log"),
+				CreatedAt:         time.Now().Add(-time.Minute),
+				ExpiresAt:         time.Now().Add(time.Minute),
+				DispatchPayload: map[string]any{
+					"repo":      "/tmp/repo",
+					"log_paths": []string{"/tmp/original.log"},
+					"input":     "Issue an offline to moltenbot hub -> review na.hub.molten.bot.openapi.yaml for integration behaviours.",
+				},
+			},
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("seed store: %v", err)
+	}
+
+	firstFailure := hub.PullResponse{
+		DeliveryID:    "delivery-1",
+		FromAgentUUID: "worker-uuid",
+		OpenClawMessage: hub.OpenClawMessage{
+			Type:        "skill_result",
+			SkillName:   "run_task",
+			RequestID:   "child-req",
+			ReplyTo:     "parent-req",
+			OK:          boolPtr(false),
+			Error:       "task execution failed",
+			ErrorDetail: map[string]any{"stderr": "panic: boom"},
+			Payload:     map[string]any{"status": "failed", "retryable": true, "next_action": "inspect_logs"},
+		},
+	}
+
+	if err := service.handleInboundMessage(context.Background(), firstFailure); err != nil {
+		t.Fatalf("first inbound failure should trigger retry: %v", err)
+	}
+
+	if len(fake.publishCalls) != 1 {
+		t.Fatalf("expected one retry publish after first failure, got %d", len(fake.publishCalls))
+	}
+	if got := fake.publishCalls[0].Message.Type; got != "skill_request" {
+		t.Fatalf("expected retry publish to be a skill_request, got %q", got)
+	}
+	if got := fake.publishCalls[0].ToAgentUUID; got != "worker-uuid" {
+		t.Fatalf("unexpected retry target: %#v", fake.publishCalls[0])
+	}
+	if got := fake.publishCalls[0].Message.RequestID; got == "child-req" || got == "" {
+		t.Fatalf("expected retry request id to rotate, got %q", got)
+	}
+	if len(fake.offlineCalls) != 0 {
+		t.Fatalf("expected no offline call after first failure retry, got %d", len(fake.offlineCalls))
+	}
+
+	state := service.store.Snapshot()
+	if len(state.PendingTasks) != 1 {
+		t.Fatalf("expected task to remain pending after retry dispatch, got %d pending", len(state.PendingTasks))
+	}
+	retried := state.PendingTasks[0]
+	if retried.ExecutionRetryCount != 1 {
+		t.Fatalf("expected retry counter to increment, got %#v", retried)
+	}
+	if retried.ChildRequestID == "child-req" {
+		t.Fatalf("expected pending task child request id to rotate, got %#v", retried)
+	}
+	if retried.ChildRequestID != fake.publishCalls[0].Message.RequestID {
+		t.Fatalf("expected pending retry request id %q, got %q", fake.publishCalls[0].Message.RequestID, retried.ChildRequestID)
+	}
+	if len(state.FollowUpTasks) != 0 {
+		t.Fatalf("expected no follow-up queued after first failure retry, got %d", len(state.FollowUpTasks))
+	}
+
+	secondFailure := firstFailure
+	secondFailure.OpenClawMessage.RequestID = retried.ChildRequestID
+	if err := service.handleInboundMessage(context.Background(), secondFailure); err != nil {
+		t.Fatalf("second inbound failure should finalize task failure: %v", err)
+	}
+
+	if len(fake.publishCalls) != 3 {
+		t.Fatalf("expected retry publish + caller failure + follow-up publish, got %d", len(fake.publishCalls))
+	}
+	if got := fake.publishCalls[1].Message.Type; got != "skill_result" {
+		t.Fatalf("expected caller failure publish on second failure, got %q", got)
+	}
+	if got := fake.publishCalls[2].Message.SkillName; got != failureReviewSkillName {
+		t.Fatalf("expected follow-up publish on second failure, got %q", got)
+	}
+	if len(fake.offlineCalls) != 1 {
+		t.Fatalf("expected one offline call after final failure, got %d", len(fake.offlineCalls))
+	}
+
+	state = service.store.Snapshot()
+	if len(state.PendingTasks) != 0 {
+		t.Fatalf("expected pending task to clear after final failure handling, got %d", len(state.PendingTasks))
+	}
+	if len(state.FollowUpTasks) != 1 {
+		t.Fatalf("expected one follow-up after final failure handling, got %d", len(state.FollowUpTasks))
+	}
+}
+
 func TestHandleDispatchResolutionFailureQueuesFollowUpWhenCallerPublishFails(t *testing.T) {
 	t.Parallel()
 
@@ -1244,16 +1368,17 @@ func TestHandleDownstreamFailureQueuesFollowUpWhenCallerPublishFails(t *testing.
 		state.Session.AgentURI = "molten://dispatch/self"
 		state.PendingTasks = []PendingTask{
 			{
-				ID:                "task-1",
-				ParentRequestID:   "parent-req",
-				ChildRequestID:    "child-req",
-				OriginalSkillName: "run_task",
-				CallerAgentUUID:   "caller-uuid",
-				CallerRequestID:   "parent-req",
-				Repo:              "/tmp/repo",
-				LogPath:           filepath.Join(service.settings.DataDir, "logs", "task-1.log"),
-				CreatedAt:         time.Now().Add(-time.Minute),
-				ExpiresAt:         time.Now().Add(time.Minute),
+				ID:                  "task-1",
+				ParentRequestID:     "parent-req",
+				ChildRequestID:      "child-req",
+				OriginalSkillName:   "run_task",
+				CallerAgentUUID:     "caller-uuid",
+				CallerRequestID:     "parent-req",
+				Repo:                "/tmp/repo",
+				LogPath:             filepath.Join(service.settings.DataDir, "logs", "task-1.log"),
+				CreatedAt:           time.Now().Add(-time.Minute),
+				ExpiresAt:           time.Now().Add(time.Minute),
+				ExecutionRetryCount: 1,
 				DispatchPayload: map[string]any{
 					"repo":      "/tmp/repo",
 					"log_paths": []string{"/tmp/original.log"},
@@ -1659,16 +1784,17 @@ func TestHandleDownstreamFailureStillQueuesFollowUpWhenCallerPublishFails(t *tes
 		state.Session.AgentURI = "molten://dispatch/self"
 		state.PendingTasks = []PendingTask{
 			{
-				ID:                "task-1",
-				ParentRequestID:   "parent-req",
-				ChildRequestID:    "child-req",
-				OriginalSkillName: "run_task",
-				CallerAgentUUID:   "caller-uuid",
-				CallerRequestID:   "parent-req",
-				Repo:              "/tmp/repo",
-				LogPath:           filepath.Join(service.settings.DataDir, "logs", "task-1.log"),
-				CreatedAt:         time.Now().Add(-time.Minute),
-				ExpiresAt:         time.Now().Add(time.Minute),
+				ID:                  "task-1",
+				ParentRequestID:     "parent-req",
+				ChildRequestID:      "child-req",
+				OriginalSkillName:   "run_task",
+				CallerAgentUUID:     "caller-uuid",
+				CallerRequestID:     "parent-req",
+				Repo:                "/tmp/repo",
+				LogPath:             filepath.Join(service.settings.DataDir, "logs", "task-1.log"),
+				CreatedAt:           time.Now().Add(-time.Minute),
+				ExpiresAt:           time.Now().Add(time.Minute),
+				ExecutionRetryCount: 1,
 				DispatchPayload: map[string]any{
 					"repo":      "/tmp/repo",
 					"log_paths": []string{"/tmp/original.log"},
