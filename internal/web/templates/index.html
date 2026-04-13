@@ -77,33 +77,6 @@
       <p class="sub-actions-hub-link-row" data-sub-actions-connect-panel {{if not .SubActions.RequiresAgentConnection}}hidden{{end}}>
         <a class="sub-actions-hub-link" href="{{if .SubActions.AgentConnectURL}}{{.SubActions.AgentConnectURL}}{{else}}https://app.molten.bot/hub{{end}}" target="_blank" rel="noreferrer noopener">Connect agents in Molten Bot Hub</a>
       </p>
-      <div class="connected-agents-refresh-shell connected-agents-refresh-shell-inline">
-        <button
-          type="button"
-          id="sub-actions-notice-refresh"
-          class="connected-agents-refresh"
-          data-connected-agents-refresh-button
-          aria-label="Refresh connected agents now"
-          title="Refresh connected agents now"
-        >
-          <span aria-hidden="true">↻</span>
-          <span>Refresh</span>
-        </button>
-        <div
-          id="sub-actions-notice-refresh-progress"
-          class="connected-agents-refresh-progress"
-          data-connected-agents-refresh-progress
-          role="progressbar"
-          aria-label="Connected agents auto-refresh progress"
-          aria-valuemin="0"
-          aria-valuemax="100"
-          aria-valuenow="0"
-        >
-          <span class="connected-agents-refresh-progress-bar" data-connected-agents-refresh-bar></span>
-        </div>
-        <p class="connected-agents-refresh-next" data-connected-agents-refresh-next aria-live="polite">Auto-refresh in 30s.</p>
-        <p class="connected-agents-refresh-status" data-connected-agents-refresh-status aria-live="polite"></p>
-      </div>
     </section>
 
     <div id="sub-actions" {{if not .SubActions.Visible}}hidden{{end}}>
@@ -161,51 +134,6 @@
       </section>
 
       <section class="grid two-up">
-        <article class="panel">
-          <div class="panel-heading-inline">
-            <h2>Connected Agents</h2>
-            <button
-              type="button"
-              id="connected-agents-refresh"
-              class="connected-agents-refresh"
-              data-connected-agents-refresh-button
-              aria-label="Refresh connected agents"
-              title="Refresh connected agents"
-            >
-              <span aria-hidden="true">↻</span>
-              <span>Refresh</span>
-            </button>
-          </div>
-          <div
-            id="connected-agents-refresh-progress"
-            class="connected-agents-refresh-progress"
-            data-connected-agents-refresh-progress
-            role="progressbar"
-            aria-label="Connected agents auto-refresh progress"
-            aria-valuemin="0"
-            aria-valuemax="100"
-            aria-valuenow="0"
-          >
-            <span class="connected-agents-refresh-progress-bar" data-connected-agents-refresh-bar></span>
-          </div>
-          <p id="connected-agents-refresh-next" class="connected-agents-refresh-next" data-connected-agents-refresh-next aria-live="polite">Auto-refresh in 30s.</p>
-          <p id="connected-agents-refresh-status" class="connected-agents-refresh-status" data-connected-agents-refresh-status aria-live="polite"></p>
-          <p id="connected-agents-empty" class="empty" {{if .State.ConnectedAgents}}hidden{{end}}>No connected agents configured yet.</p>
-          <div id="connected-agents-list" class="list connected-agents-list" {{if not .State.ConnectedAgents}}hidden{{end}}>
-            {{range .State.ConnectedAgents}}
-            <article class="connected-agent-card">
-              <div class="connected-agent-card-main">
-                <span class="connected-agent-avatar" aria-hidden="true">{{if .Emoji}}{{.Emoji}}{{else}}🤖{{end}}</span>
-                <div class="connected-agent-card-copy">
-                  <h3>{{if .Name}}{{.Name}}{{else if .ID}}{{.ID}}{{else if .AgentUUID}}{{.AgentUUID}}{{else if .AgentURI}}{{.AgentURI}}{{else}}Unknown agent{{end}}</h3>
-                  <p class="connected-agent-handle">{{if .ID}}@{{.ID}}{{else if .AgentUUID}}{{.AgentUUID}}{{else if .AgentURI}}{{.AgentURI}}{{else}}unknown{{end}}</p>
-                </div>
-              </div>
-            </article>
-            {{end}}
-          </div>
-        </article>
-
         <article class="panel">
           <h2>Pending Tasks</h2>
           {{if .State.PendingTasks}}
@@ -321,7 +249,7 @@
     </div>
   </div>
   {{if .State.Session.AgentToken}}
-  <div
+      <div
     class="settings-modal-backdrop"
     id="agent-settings-modal-backdrop"
     role="dialog"
@@ -340,6 +268,33 @@
         </div>
         <button type="button" class="settings-modal-close" id="agent-settings-modal-close">Close</button>
       </header>
+      <div class="connected-agents-refresh-shell">
+        <button
+          type="button"
+          id="agent-settings-refresh-connected-agents"
+          class="connected-agents-refresh"
+          data-connected-agents-refresh-button
+          aria-label="Refresh connected agents"
+          title="Refresh connected agents"
+        >
+          <span aria-hidden="true">↻</span>
+          <span>Refresh Connected Agents</span>
+        </button>
+        <div
+          id="agent-settings-refresh-connected-agents-progress"
+          class="connected-agents-refresh-progress"
+          data-connected-agents-refresh-progress
+          role="progressbar"
+          aria-label="Connected agents auto-refresh progress"
+          aria-valuemin="0"
+          aria-valuemax="100"
+          aria-valuenow="0"
+        >
+          <span class="connected-agents-refresh-progress-bar" data-connected-agents-refresh-bar></span>
+        </div>
+        <p id="agent-settings-refresh-connected-agents-next" class="connected-agents-refresh-next" data-connected-agents-refresh-next aria-live="polite">Auto-refresh in 30s.</p>
+        <p id="agent-settings-refresh-connected-agents-status" class="connected-agents-refresh-status" data-connected-agents-refresh-status aria-live="polite"></p>
+      </div>
       <form method="post" action="/profile" class="stack profile-shell">
         <div class="profile-grid profile-grid-top">
           <label>Handle<input id="agent-settings-handle" name="handle" value="{{.ProfileForm.Handle}}" {{if .State.Session.HandleFinalized}}readonly{{end}}></label>
@@ -1833,10 +1788,26 @@
         syncConnectedAgentSelection();
       };
 
-      const renderConnectedAgents = (agents) => {
-        if (!(connectedAgentsList instanceof HTMLElement) || !(connectedAgentsEmpty instanceof HTMLElement)) {
-          return;
+      const stopConnectedAgentsAutoRefresh = (countdownText) => {
+        if (connectedAgentsAutoRefreshTimer) {
+          window.clearTimeout(connectedAgentsAutoRefreshTimer);
+          connectedAgentsAutoRefreshTimer = 0;
         }
+        setConnectedAgentsRefreshProgress(0);
+        if (typeof countdownText === "string" && countdownText.trim() !== "") {
+          connectedAgentsRefreshNextNodes.forEach((node) => {
+            if (node instanceof HTMLElement) {
+              node.textContent = countdownText;
+            }
+          });
+        }
+      };
+
+      const shouldPollConnectedAgents = () => {
+        return bound && connectedAgentsCount === 0;
+      };
+
+      const renderConnectedAgents = (agents) => {
         const nextAgents = Array.isArray(agents) ? agents : [];
         latestConnectedAgents = nextAgents;
         connectedAgentsCount = nextAgents.length;
@@ -1845,17 +1816,26 @@
         }
         renderManualDispatchTargets(nextAgents);
         syncSubActions(latestHubConnectionState);
-        connectedAgentsList.innerHTML = "";
-        if (nextAgents.length === 0) {
-          connectedAgentsList.hidden = true;
-          connectedAgentsEmpty.hidden = false;
+        if (connectedAgentsList instanceof HTMLElement && connectedAgentsEmpty instanceof HTMLElement) {
+          connectedAgentsList.innerHTML = "";
+          if (nextAgents.length === 0) {
+            connectedAgentsList.hidden = true;
+            connectedAgentsEmpty.hidden = false;
+          } else {
+            nextAgents.forEach((agent) => {
+              connectedAgentsList.appendChild(buildConnectedAgentCard(agent, false));
+            });
+            connectedAgentsEmpty.hidden = true;
+            connectedAgentsList.hidden = false;
+          }
+        }
+        if (shouldPollConnectedAgents()) {
+          scheduleConnectedAgentsAutoRefresh();
           return;
         }
-        nextAgents.forEach((agent) => {
-          connectedAgentsList.appendChild(buildConnectedAgentCard(agent, false));
-        });
-        connectedAgentsEmpty.hidden = true;
-        connectedAgentsList.hidden = false;
+        if (bound) {
+          stopConnectedAgentsAutoRefresh("Auto-refresh paused while agents are connected.");
+        }
       };
 
       const setConnectedAgentsRefreshProgress = (ratio) => {
@@ -1907,6 +1887,10 @@
       let connectedAgentsRefreshTickTimer = 0;
 
       const scheduleConnectedAgentsAutoRefresh = (delayMs = CONNECTED_AGENTS_REFRESH_INTERVAL_MS) => {
+        if (!shouldPollConnectedAgents()) {
+          stopConnectedAgentsAutoRefresh(bound ? "Auto-refresh paused while agents are connected." : "Bind to Molten Hub to refresh connected agents.");
+          return;
+        }
         if (connectedAgentsAutoRefreshTimer) {
           window.clearTimeout(connectedAgentsAutoRefreshTimer);
           connectedAgentsAutoRefreshTimer = 0;
@@ -1969,7 +1953,11 @@
           setConnectedAgentsRefreshState(false, message, true);
         } finally {
           connectedAgentsRefreshInFlight = false;
-          scheduleConnectedAgentsAutoRefresh();
+          if (shouldPollConnectedAgents()) {
+            scheduleConnectedAgentsAutoRefresh();
+          } else if (bound) {
+            stopConnectedAgentsAutoRefresh("Auto-refresh paused while agents are connected.");
+          }
         }
       };
 
@@ -2139,10 +2127,13 @@
       if (!bound) {
         setConnectedAgentsRefreshCountdown(CONNECTED_AGENTS_REFRESH_INTERVAL_MS, false);
         setConnectedAgentsRefreshState(false, "Bind to Molten Hub to refresh connected agents.");
-      } else {
+      } else if (shouldPollConnectedAgents()) {
         startConnectedAgentsRefreshTicker();
         scheduleConnectedAgentsAutoRefresh();
         void refreshConnectedAgents("initial");
+      } else {
+        stopConnectedAgentsAutoRefresh("Auto-refresh paused while agents are connected.");
+        setConnectedAgentsRefreshState(false, "");
       }
     })();
   </script>

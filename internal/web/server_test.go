@@ -997,6 +997,18 @@ func TestHandleIndexRendersBottomDockAndSettingsDialogForBoundSession(t *testing
 	if !strings.Contains(body, `id="agent-settings-modal-close"`) {
 		t.Fatalf("expected settings dialog close control, body=%s", body)
 	}
+	if !strings.Contains(body, `id="agent-settings-refresh-connected-agents"`) {
+		t.Fatalf("expected connected-agents refresh button inside settings dialog, body=%s", body)
+	}
+	if !strings.Contains(body, `id="agent-settings-refresh-connected-agents-progress"`) {
+		t.Fatalf("expected connected-agents refresh progress inside settings dialog, body=%s", body)
+	}
+	if !strings.Contains(body, `id="agent-settings-refresh-connected-agents-next"`) {
+		t.Fatalf("expected connected-agents refresh countdown inside settings dialog, body=%s", body)
+	}
+	if !strings.Contains(body, `id="agent-settings-refresh-connected-agents-status"`) {
+		t.Fatalf("expected connected-agents refresh status inside settings dialog, body=%s", body)
+	}
 	if !strings.Contains(body, `const agentSettingsDockButton = document.getElementById("agent-settings-dock-button");`) {
 		t.Fatalf("expected settings dock JS hook, body=%s", body)
 	}
@@ -1744,23 +1756,17 @@ func TestHandleIndexRendersConnectedAgentsRefreshPanel(t *testing.T) {
 	server.Handler().ServeHTTP(rec, req)
 
 	body := rec.Body.String()
-	if !strings.Contains(body, ">Connected Agents<") {
-		t.Fatalf("expected connected agents panel heading, body=%s", body)
+	if strings.Contains(body, ">Connected Agents<") {
+		t.Fatalf("did not expect connected agents panel on the main page, body=%s", body)
 	}
 	if strings.Contains(body, "Connected Agent Directory") {
 		t.Fatalf("did not expect deprecated connected agent directory heading, body=%s", body)
 	}
-	if !strings.Contains(body, `id="connected-agents-refresh"`) {
-		t.Fatalf("expected connected agents refresh control, body=%s", body)
+	if strings.Contains(body, `id="connected-agents-refresh"`) {
+		t.Fatalf("did not expect main-page connected agents refresh control, body=%s", body)
 	}
-	if !strings.Contains(body, `id="connected-agents-refresh-progress"`) {
-		t.Fatalf("expected connected agents refresh loading bar, body=%s", body)
-	}
-	if !strings.Contains(body, `id="connected-agents-refresh-next"`) {
-		t.Fatalf("expected connected agents auto-refresh countdown label, body=%s", body)
-	}
-	if !strings.Contains(body, `id="connected-agents-list"`) {
-		t.Fatalf("expected connected agents list container, body=%s", body)
+	if !strings.Contains(body, `id="agent-settings-refresh-connected-agents"`) {
+		t.Fatalf("expected connected agents refresh control in settings modal, body=%s", body)
 	}
 	if !strings.Contains(body, `class="connected-agent-card"`) {
 		t.Fatalf("expected connected agent card layout, body=%s", body)
@@ -1795,8 +1801,17 @@ func TestHandleIndexRendersConnectedAgentsRefreshPanel(t *testing.T) {
 	if !strings.Contains(body, `const CONNECTED_AGENTS_REFRESH_INTERVAL_MS = 30000;`) {
 		t.Fatalf("expected 30s connected agents refresh interval constant, body=%s", body)
 	}
+	if !strings.Contains(body, `const shouldPollConnectedAgents = () => {`) {
+		t.Fatalf("expected connected agents polling guard helper, body=%s", body)
+	}
+	if !strings.Contains(body, `return bound && connectedAgentsCount === 0;`) {
+		t.Fatalf("expected polling guard to stop once agents exist, body=%s", body)
+	}
 	if !strings.Contains(body, `const scheduleConnectedAgentsAutoRefresh = (delayMs = CONNECTED_AGENTS_REFRESH_INTERVAL_MS) => {`) {
 		t.Fatalf("expected connected agents auto-refresh scheduler, body=%s", body)
+	}
+	if !strings.Contains(body, `Auto-refresh paused while agents are connected.`) {
+		t.Fatalf("expected paused auto-refresh copy once agents exist, body=%s", body)
 	}
 	if !strings.Contains(body, `const syncConnectedAgentSelection = () => {`) {
 		t.Fatalf("expected connected agent card selection sync helper, body=%s", body)
@@ -1821,6 +1836,9 @@ func TestHandleIndexRendersConnectedAgentsRefreshPanel(t *testing.T) {
 	}
 	if !strings.Contains(body, `setConnectedAgentsRefreshState(false, "");`) {
 		t.Fatalf("expected refresh completion to clear the status text, body=%s", body)
+	}
+	if !strings.Contains(body, `} else if (shouldPollConnectedAgents()) {`) {
+		t.Fatalf("expected bound-session refresh bootstrapping to depend on missing agents, body=%s", body)
 	}
 	if strings.Contains(body, "toLocaleTimeString") {
 		t.Fatalf("did not expect connected agents refresh timestamp formatting, body=%s", body)
