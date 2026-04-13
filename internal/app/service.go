@@ -394,7 +394,7 @@ func (s *Service) DispatchFromUI(ctx context.Context, req DispatchRequest) (Pend
 	}
 	s.syncHubClient(state)
 
-	target, err := s.resolveDispatchTarget(state, req)
+	target, req, err := s.prepareDispatchRequest(state, req)
 	if err != nil {
 		return PendingTask{}, err
 	}
@@ -685,7 +685,11 @@ func (s *Service) handleInboundMessage(ctx context.Context, message hub.PullResp
 func (s *Service) handleSkillRequest(ctx context.Context, message hub.PullResponse) error {
 	state := s.store.Snapshot()
 	var payload dispatchPayload
-	if err := payload.FromAny(message.OpenClawMessage.Payload); err != nil {
+	rawDispatchPayload := message.OpenClawMessage.Payload
+	if rawDispatchPayload == nil {
+		rawDispatchPayload = message.OpenClawMessage.Input
+	}
+	if err := payload.FromAny(rawDispatchPayload); err != nil {
 		pending := PendingTask{
 			ID:              NewID("task"),
 			ParentRequestID: message.OpenClawMessage.RequestID,
@@ -706,7 +710,7 @@ func (s *Service) handleSkillRequest(ctx context.Context, message hub.PullRespon
 		Payload:        payload.Payload,
 		PayloadFormat:  payload.PayloadFormat,
 	}
-	target, err := s.resolveDispatchTarget(state, req)
+	target, req, err := s.prepareDispatchRequest(state, req)
 	if err != nil {
 		pending := PendingTask{
 			ID:                NewID("task"),
@@ -947,6 +951,10 @@ func (s *Service) buildPendingTask(state AppState, target ConnectedAgent, req Di
 	logPath := filepath.Join(state.Settings.DataDir, "logs", taskID+".log")
 
 	payload := normalizePayload(req.Payload, req.Repo, req.LogPaths)
+	var outboundPayload any
+	if payload != nil {
+		outboundPayload = payload
+	}
 	task := PendingTask{
 		ID:                taskID,
 		ParentRequestID:   req.RequestID,
@@ -967,7 +975,7 @@ func (s *Service) buildPendingTask(state AppState, target ConnectedAgent, req Di
 	message := newSkillRequestMessage(
 		now,
 		req.SkillName,
-		payload,
+		outboundPayload,
 		normalizePayloadFormat(req.PayloadFormat, req.Payload),
 		childRequestID,
 		req.RequestID,
@@ -1018,6 +1026,10 @@ func (s *Service) resolveDispatchTarget(state AppState, req DispatchRequest) (Co
 		return ConnectedAgent{}, fmt.Errorf("no connected agent matched %q", req.TargetAgentRef)
 	}
 
+	if strings.TrimSpace(req.SkillName) == "" {
+		return ConnectedAgent{}, errors.New("skill_name is required when target_agent_ref is empty")
+	}
+
 	for _, agent := range state.ConnectedAgents {
 		if agent.DefaultSkill == req.SkillName {
 			return agent, nil
@@ -1029,6 +1041,51 @@ func (s *Service) resolveDispatchTarget(state AppState, req DispatchRequest) (Co
 		}
 	}
 	return ConnectedAgent{}, fmt.Errorf("no connected agent advertises skill %q", req.SkillName)
+}
+
+func (s *Service) prepareDispatchRequest(state AppState, req DispatchRequest) (ConnectedAgent, DispatchRequest, error) {
+	target, err := s.resolveDispatchTarget(state, req)
+	if err != nil {
+		return ConnectedAgent{}, req, err
+	}
+
+	skillName, err := resolveDispatchSkillName(target, req.SkillName)
+	if err != nil {
+		return ConnectedAgent{}, req, err
+	}
+	req.SkillName = skillName
+	return target, req, nil
+}
+
+func resolveDispatchSkillName(target ConnectedAgent, skillName string) (string, error) {
+	skillName = strings.TrimSpace(skillName)
+	if skillName != "" {
+		return skillName, nil
+	}
+
+	if target.DefaultSkill != "" {
+		return target.DefaultSkill, nil
+	}
+
+	var inferred string
+	for _, skill := range target.AdvertisedSkills {
+		name := strings.TrimSpace(skill.Name)
+		if name == "" {
+			continue
+		}
+		if inferred == "" {
+			inferred = name
+			continue
+		}
+		if inferred != name {
+			return "", fmt.Errorf("skill_name is required for %q because no default skill is configured", target.NameOrRef())
+		}
+	}
+	if inferred != "" {
+		return inferred, nil
+	}
+
+	return "", fmt.Errorf("skill_name is required for %q because no default skill is configured", target.NameOrRef())
 }
 
 func (s *Service) failUIRequest(ctx context.Context, state AppState, task PendingTask, cause error) error {
@@ -1099,6 +1156,7 @@ func (s *Service) logEvent(level, title, detail, taskID, logPath string) error {
 }
 
 type dispatchPayload struct {
+	AgentRef        string   `json:"target_agent_ref"`
 	TargetAgentUUID string   `json:"target_agent_uuid"`
 	TargetAgentURI  string   `json:"target_agent_uri"`
 	SkillName       string   `json:"skill_name"`
@@ -1110,16 +1168,44 @@ type dispatchPayload struct {
 
 func (p *dispatchPayload) FromAny(value any) error {
 	if value == nil {
-		return errors.New("missing payload")
+		*p = dispatchPayload{}
+		return nil
+	}
+	switch typed := value.(type) {
+	case string:
+		return p.fromJSONString(typed)
+	case []byte:
+		return p.fromJSONString(string(typed))
+	case json.RawMessage:
+		return p.fromJSONBytes(typed)
 	}
 	data, err := json.Marshal(value)
 	if err != nil {
 		return err
 	}
-	return json.Unmarshal(data, p)
+	return p.fromJSONBytes(data)
+}
+
+func (p *dispatchPayload) fromJSONString(raw string) error {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		*p = dispatchPayload{}
+		return nil
+	}
+	return p.fromJSONBytes([]byte(raw))
+}
+
+func (p *dispatchPayload) fromJSONBytes(data []byte) error {
+	if err := json.Unmarshal(data, p); err != nil {
+		return fmt.Errorf("dispatch payload must be a JSON object: %w", err)
+	}
+	return nil
 }
 
 func (p dispatchPayload) TargetAgentRef() string {
+	if p.AgentRef != "" {
+		return p.AgentRef
+	}
 	if p.TargetAgentUUID != "" {
 		return p.TargetAgentUUID
 	}
@@ -1127,6 +1213,9 @@ func (p dispatchPayload) TargetAgentRef() string {
 }
 
 func normalizePayload(payload any, repo string, logPaths []string) map[string]any {
+	if payload == nil && repo == "" && len(logPaths) == 0 {
+		return nil
+	}
 	switch typed := payload.(type) {
 	case map[string]any:
 		if repo != "" {
