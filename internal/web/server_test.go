@@ -933,11 +933,11 @@ func TestHandleIndexShowsConnectAgentsPanelWhenNoConnectedAgents(t *testing.T) {
 	if !strings.Contains(body, `class="sub-actions-hub-link" href="https://app.molten.bot/hub"`) {
 		t.Fatalf("expected connect-agents panel link to Molten Bot Hub dashboard, body=%s", body)
 	}
-	if !strings.Contains(body, `id="sub-actions-notice-refresh"`) {
-		t.Fatalf("expected notice panel manual refresh control, body=%s", body)
+	if strings.Contains(body, `id="sub-actions-notice-refresh"`) {
+		t.Fatalf("did not expect notice panel refresh control on the main page, body=%s", body)
 	}
-	if !strings.Contains(body, `id="sub-actions-notice-refresh-progress"`) {
-		t.Fatalf("expected notice panel refresh loading bar, body=%s", body)
+	if !strings.Contains(body, `id="agent-settings-refresh-connected-agents"`) {
+		t.Fatalf("expected settings modal refresh control for connected agents, body=%s", body)
 	}
 }
 
