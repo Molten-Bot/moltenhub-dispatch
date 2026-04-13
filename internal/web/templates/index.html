@@ -121,6 +121,7 @@
                 type="button"
                 class="connected-agent-card connected-agent-card-button"
                 data-connected-agent-target-ref="{{if .ID}}{{.ID}}{{else if .AgentUUID}}{{.AgentUUID}}{{else if .AgentURI}}{{.AgentURI}}{{else if .Name}}{{.Name}}{{end}}"
+                data-connected-agent-refs="{{if .ID}}{{.ID}}{{end}}{{if .AgentUUID}}{{if .ID}}&#10;{{end}}{{.AgentUUID}}{{end}}{{if .AgentURI}}{{if or .ID .AgentUUID}}&#10;{{end}}{{.AgentURI}}{{end}}"
                 data-connected-agent-display="{{if .Name}}{{.Name}}{{else if .ID}}{{.ID}}{{else if .AgentUUID}}{{.AgentUUID}}{{else if .AgentURI}}{{.AgentURI}}{{else}}Unknown agent{{end}}"
                 aria-pressed="false"
               >
@@ -1535,6 +1536,46 @@
         return "";
       };
 
+      const connectedAgentRefs = (agent) => {
+        const ordered = [];
+        const seen = new Set();
+        [agent && agent.id, agent && agent.agent_uuid, agent && agent.agent_uri].forEach((value) => {
+          const ref = trimmedString(value);
+          if (!ref) {
+            return;
+          }
+          const key = ref.toLowerCase();
+          if (seen.has(key)) {
+            return;
+          }
+          seen.add(key);
+          ordered.push(ref);
+        });
+        return ordered;
+      };
+
+      const refsFromNode = (node) => {
+        if (!(node instanceof HTMLElement)) {
+          return [];
+        }
+        const rawRefs = trimmedString(node.dataset.connectedAgentRefs);
+        if (rawRefs !== "") {
+          return rawRefs.split("\n")
+            .map((value) => trimmedString(value))
+            .filter((value, index, values) => value !== "" && values.findIndex((entry) => entry.toLowerCase() === value.toLowerCase()) === index);
+        }
+        const fallbackRef = trimmedString(node.dataset.connectedAgentTargetRef);
+        return fallbackRef === "" ? [] : [fallbackRef];
+      };
+
+      const agentMatchesTargetRef = (agent, targetRef) => {
+        const normalizedTargetRef = trimmedString(targetRef).toLowerCase();
+        if (normalizedTargetRef === "") {
+          return false;
+        }
+        return connectedAgentRefs(agent).some((ref) => ref.toLowerCase() === normalizedTargetRef);
+      };
+
       const connectedAgentSkillEntries = (agent) => {
         const ordered = [];
         const seen = new Set();
@@ -1660,7 +1701,7 @@
           return;
         }
         const selectedTargetRef = trimmedString(targetAgentRefInput && targetAgentRefInput.value);
-        const selectedAgent = latestConnectedAgents.find((agent) => connectedAgentTargetRef(agent) === selectedTargetRef);
+        const selectedAgent = latestConnectedAgents.find((agent) => agentMatchesTargetRef(agent, selectedTargetRef));
         const previousSkill = trimmedString(skillNameSelect.value);
         const skillEntries = connectedAgentSkillEntries(selectedAgent);
 
@@ -1730,8 +1771,7 @@
           if (!(node instanceof HTMLButtonElement)) {
             return;
           }
-          const targetRef = trimmedString(node.dataset.connectedAgentTargetRef);
-          const selected = selectedRef !== "" && selectedRef === targetRef;
+          const selected = selectedRef !== "" && refsFromNode(node).some((ref) => ref.toLowerCase() === selectedRef.toLowerCase());
           node.classList.toggle("is-selected", selected);
           node.setAttribute("aria-pressed", selected ? "true" : "false");
         });
@@ -1765,6 +1805,10 @@
           const targetRef = connectedAgentTargetRef(agent);
           if (targetRef) {
             card.dataset.connectedAgentTargetRef = targetRef;
+          }
+          const refs = connectedAgentRefs(agent);
+          if (refs.length > 0) {
+            card.dataset.connectedAgentRefs = refs.join("\n");
           }
           card.dataset.connectedAgentDisplay = connectedAgentDisplayName(agent);
           card.setAttribute("aria-pressed", "false");
@@ -1827,8 +1871,8 @@
         });
 
         if (targetAgentRefInput instanceof HTMLInputElement) {
-          const targetStillExists = nextAgents.some((agent) => connectedAgentTargetRef(agent) === previousTargetRef);
-          targetAgentRefInput.value = targetStillExists ? previousTargetRef : "";
+          const selectedAgent = nextAgents.find((agent) => agentMatchesTargetRef(agent, previousTargetRef));
+          targetAgentRefInput.value = selectedAgent ? connectedAgentTargetRef(selectedAgent) : "";
         }
         syncConnectedAgentSelection();
       };
@@ -2081,6 +2125,22 @@
       if (manualDispatchForm instanceof HTMLFormElement) {
         manualDispatchForm.addEventListener("submit", async (event) => {
           event.preventDefault();
+          const selectedTargetRef = trimmedString(targetAgentRefInput && targetAgentRefInput.value);
+          if (selectedTargetRef === "") {
+            setDispatchSubmitStatus("Select a target agent before dispatching.", true);
+            const firstSelectableTarget = manualDispatchTargets instanceof HTMLElement
+              ? manualDispatchTargets.querySelector("[data-connected-agent-target-ref]")
+              : null;
+            if (firstSelectableTarget instanceof HTMLElement) {
+              firstSelectableTarget.focus({ preventScroll: true });
+            }
+            return;
+          }
+          if (skillNameSelect instanceof HTMLSelectElement && !skillNameSelect.disabled && trimmedString(skillNameSelect.value) === "") {
+            setDispatchSubmitStatus("Select a skill for the chosen agent before dispatching.", true);
+            skillNameSelect.focus({ preventScroll: true });
+            return;
+          }
           if (!validateSkillPayload()) {
             if (skillPayloadInput instanceof HTMLTextAreaElement) {
               skillPayloadInput.reportValidity();
