@@ -1,10 +1,12 @@
 package web
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"html/template"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -881,6 +883,59 @@ func TestHandleDispatchAPIAcceptsSelectedAgentAndSkillAliases(t *testing.T) {
 	}
 	if got := stub.lastDispatchReq.Payload; got != "Issue an offline to moltenbot hub" {
 		t.Fatalf("unexpected payload value: %#v", stub.lastDispatchReq.Payload)
+	}
+}
+
+func TestHandleDispatchAPIAcceptsMultipartFormData(t *testing.T) {
+	t.Parallel()
+
+	stub := &stubService{
+		dispatchTask: app.PendingTask{ID: "task-1"},
+	}
+	server, err := New(stub)
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	for key, value := range map[string]string{
+		"target_agent_ref": "worker-a",
+		"skill_name":       "code_for_me",
+		"payload":          "{\"repos\":[\"git@github.com:Molten-Bot/moltenhub-dispatch.git\"],\"prompt\":\"Issue an offline to moltenbot hub -> review na.hub.molten.bot.openapi.yaml for integration behaviours.\"}",
+	} {
+		if err := writer.WriteField(key, value); err != nil {
+			t.Fatalf("write multipart field %q: %v", key, err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close multipart writer: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/dispatch", &body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	rec := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 response, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	if got := stub.lastDispatchReq.TargetAgentRef; got != "worker-a" {
+		t.Fatalf("unexpected target agent ref: %#v", stub.lastDispatchReq)
+	}
+	if got := stub.lastDispatchReq.SkillName; got != "code_for_me" {
+		t.Fatalf("unexpected skill name: %#v", stub.lastDispatchReq)
+	}
+	if got := stub.lastDispatchReq.PayloadFormat; got != "json" {
+		t.Fatalf("expected payload format json, got %#v", stub.lastDispatchReq)
+	}
+	payload, ok := stub.lastDispatchReq.Payload.(map[string]any)
+	if !ok {
+		t.Fatalf("expected JSON payload map, got %T", stub.lastDispatchReq.Payload)
+	}
+	if got := payload["prompt"]; got != "Issue an offline to moltenbot hub -> review na.hub.molten.bot.openapi.yaml for integration behaviours." {
+		t.Fatalf("unexpected prompt payload: %#v", payload)
 	}
 }
 

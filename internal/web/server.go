@@ -340,11 +340,12 @@ func (s *Server) handleDispatch(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	if err := r.ParseForm(); err != nil {
+	values, err := parseFormValues(r)
+	if err != nil {
 		s.redirectWithMessage(w, r, "error", err.Error())
 		return
 	}
-	dispatchReq, err := dispatchRequestFromValues(r.Form)
+	dispatchReq, err := dispatchRequestFromValues(values)
 	if err != nil {
 		s.redirectWithMessage(w, r, "error", err.Error())
 		return
@@ -365,14 +366,15 @@ func (s *Server) handleDispatchAPI(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if err := r.ParseForm(); err != nil {
+	values, err := parseFormValues(r)
+	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{
 			"ok":    false,
 			"error": err.Error(),
 		})
 		return
 	}
-	dispatchReq, err := dispatchRequestFromValues(r.Form)
+	dispatchReq, err := dispatchRequestFromValues(values)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{
 			"ok":    false,
@@ -445,6 +447,20 @@ func (s *Server) redirectWithMessage(w http.ResponseWriter, r *http.Request, lev
 		return
 	}
 	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+func parseFormValues(r *http.Request) (url.Values, error) {
+	contentType := strings.ToLower(strings.TrimSpace(r.Header.Get("Content-Type")))
+	if strings.HasPrefix(contentType, "multipart/form-data") {
+		if err := r.ParseMultipartForm(8 << 20); err != nil {
+			return nil, err
+		}
+		return r.Form, nil
+	}
+	if err := r.ParseForm(); err != nil {
+		return nil, err
+	}
+	return r.Form, nil
 }
 
 func decodeStructuredJSONPayload(raw string) (any, bool) {
