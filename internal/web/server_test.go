@@ -579,6 +579,12 @@ func TestHandleIndexShowsBoundProfileState(t *testing.T) {
 	if !strings.Contains(body, `await fetch("/api/dispatch"`) {
 		t.Fatalf("expected manual dispatch async API submit hook, body=%s", body)
 	}
+	if !strings.Contains(body, `Select a target agent before dispatching.`) {
+		t.Fatalf("expected client-side empty-target dispatch guard, body=%s", body)
+	}
+	if !strings.Contains(body, `Select a skill for the chosen agent before dispatching.`) {
+		t.Fatalf("expected client-side empty-skill dispatch guard, body=%s", body)
+	}
 	if !strings.Contains(body, `skillPayloadInput.value = "";`) {
 		t.Fatalf("expected async submit success path to clear payload input, body=%s", body)
 	}
@@ -1798,6 +1804,9 @@ func TestHandleIndexRendersConnectedAgentsRefreshPanel(t *testing.T) {
 	if !strings.Contains(body, `data-connected-agent-target-ref="dispatcher"`) {
 		t.Fatalf("expected connected agent target ref on selectable card, body=%s", body)
 	}
+	if !strings.Contains(body, `data-connected-agent-refs="dispatcher`) {
+		t.Fatalf("expected connected agent reference aliases on selectable card, body=%s", body)
+	}
 	if !strings.Contains(body, `data-connected-agent-display="Dispatcher"`) {
 		t.Fatalf("expected connected agent display name in selectable card, body=%s", body)
 	}
@@ -1824,6 +1833,12 @@ func TestHandleIndexRendersConnectedAgentsRefreshPanel(t *testing.T) {
 	}
 	if !strings.Contains(body, `const connectedAgentSkillEntries = (agent) => {`) {
 		t.Fatalf("expected connected-agent skill extraction helper, body=%s", body)
+	}
+	if !strings.Contains(body, `const connectedAgentRefs = (agent) => {`) {
+		t.Fatalf("expected connected-agent alias helper, body=%s", body)
+	}
+	if !strings.Contains(body, `const agentMatchesTargetRef = (agent, targetRef) => {`) {
+		t.Fatalf("expected connected-agent target matching helper, body=%s", body)
 	}
 	if !strings.Contains(body, `const updateSkillNameOptions = () => {`) {
 		t.Fatalf("expected skill dropdown sync helper, body=%s", body)
