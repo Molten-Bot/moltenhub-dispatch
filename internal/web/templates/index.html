@@ -2284,7 +2284,7 @@
           event.preventDefault();
           const dispatchState = resolveSelectedDispatchState();
           if (dispatchState.targetRef === "") {
-            setDispatchSubmitStatus("Select a target agent before dispatching.", true);
+            setDispatchSubmitStatus("Please select agent, skill to dispatch a request.", true);
             const firstSelectableTarget = manualDispatchTargets instanceof HTMLElement
               ? manualDispatchTargets.querySelector("[data-connected-agent-target-ref]")
               : null;

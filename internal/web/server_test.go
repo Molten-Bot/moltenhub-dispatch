@@ -682,7 +682,7 @@ func TestHandleIndexShowsBoundProfileState(t *testing.T) {
 	if !strings.Contains(body, `await fetch("/api/dispatch"`) {
 		t.Fatalf("expected manual dispatch async API submit hook, body=%s", body)
 	}
-	if !strings.Contains(body, `Select a target agent before dispatching.`) {
+	if !strings.Contains(body, app.DispatchSelectionRequiredMessage) {
 		t.Fatalf("expected client-side empty-target dispatch guard, body=%s", body)
 	}
 	if !strings.Contains(body, `Select a skill for the chosen agent before dispatching.`) {
@@ -1050,6 +1050,74 @@ func TestHandleDispatchAPIRejectsUnknownPayloadFormat(t *testing.T) {
 	}
 	if body.Error != "payload_format must be one of markdown or json" {
 		t.Fatalf("unexpected API error message: %#v", body)
+	}
+	if stub.state.Flash != (app.FlashMessage{}) {
+		t.Fatalf("did not expect flash mutation for API failures, got %#v", stub.state.Flash)
+	}
+}
+
+func TestHandleDispatchRejectsEmptySelection(t *testing.T) {
+	t.Parallel()
+
+	stub := &stubService{}
+	server, err := New(stub)
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/dispatch", strings.NewReader(""))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("expected redirect response, got %d", rec.Code)
+	}
+	if got := stub.lastDispatchReq; got.TargetAgentRef != "" || got.SkillName != "" || got.Payload != nil || got.PayloadFormat != "" {
+		t.Fatalf("expected dispatch request to be rejected before service call, got %#v", got)
+	}
+	if got := stub.state.Flash.Level; got != "error" {
+		t.Fatalf("expected error flash level, got %#v", stub.state.Flash)
+	}
+	if got := stub.state.Flash.Message; got != app.DispatchSelectionRequiredMessage {
+		t.Fatalf("unexpected flash message: %#v", got)
+	}
+}
+
+func TestHandleDispatchAPIRejectsEmptySelection(t *testing.T) {
+	t.Parallel()
+
+	stub := &stubService{}
+	server, err := New(stub)
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/dispatch", strings.NewReader(""))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 response, got %d", rec.Code)
+	}
+
+	var body struct {
+		OK    bool   `json:"ok"`
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.OK {
+		t.Fatalf("expected failure response, got %#v", body)
+	}
+	if body.Error != app.DispatchSelectionRequiredMessage {
+		t.Fatalf("unexpected API error message: %#v", body)
+	}
+	if got := stub.lastDispatchReq; got.TargetAgentRef != "" || got.SkillName != "" || got.Payload != nil || got.PayloadFormat != "" {
+		t.Fatalf("expected dispatch request to be rejected before service call, got %#v", got)
 	}
 	if stub.state.Flash != (app.FlashMessage{}) {
 		t.Fatalf("did not expect flash mutation for API failures, got %#v", stub.state.Flash)
