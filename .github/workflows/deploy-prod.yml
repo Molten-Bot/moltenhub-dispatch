@@ -18,25 +18,11 @@ concurrency:
 
 jobs:
   promote-harness-variants:
-    name: Promote image to latest-${{ matrix.harness }}
+    name: Promote image to latest
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - harness: codex
-            source_suffix: ""
-            publish_default_tag: "true"
-          - harness: claude
-            source_suffix: "-claude"
-            publish_default_tag: "false"
-          - harness: auggie
-            source_suffix: "-auggie"
-            publish_default_tag: "false"
-          - harness: pi
-            source_suffix: "-pi"
-            publish_default_tag: "false"
     steps:
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -49,10 +35,7 @@ jobs:
 
       - name: Promote existing image
         run: |
-          TAG_ARGS="--tag moltenai/moltenhub-dispatch:latest-${{ matrix.harness }}"
-          if [ "${{ matrix.publish_default_tag }}" = "true" ]; then
-            TAG_ARGS="${TAG_ARGS} --tag moltenai/moltenhub-dispatch:latest"
-          fi
+          TAG_ARGS="--tag moltenai/moltenhub-dispatch:latest"
 
           docker buildx imagetools create \
             ${TAG_ARGS} \
