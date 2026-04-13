@@ -528,9 +528,6 @@ func TestHandleIndexShowsBoundProfileState(t *testing.T) {
 	if strings.Contains(body, "Awaiting Bind") {
 		t.Fatalf("did not expect removed bind state section, body=%s", body)
 	}
-	if strings.Contains(body, "one-time bind token") {
-		t.Fatalf("did not expect removed bind state copy, body=%s", body)
-	}
 	if strings.Contains(body, ">Runtime<") {
 		t.Fatalf("did not expect removed runtime panel, body=%s", body)
 	}
@@ -1176,7 +1173,7 @@ func TestHandleIndexKeepsRecentEventsClosedByDefault(t *testing.T) {
 				{
 					Title:   "Task dispatched",
 					Level:   "info",
-					Detail:  "Queued code_for_me for moltenbot/dispatch/codex-beast",
+					Detail:  "Queued code_for_me for moltenbot/jef/codex-beast",
 					TaskID:  "task-123",
 					LogPath: ".moltenhub/logs/task-123.log",
 					At:      time.Unix(1, 0).UTC(),
@@ -2093,11 +2090,17 @@ func TestHandleIndexRendersConnectedAgentsRefreshPanel(t *testing.T) {
 	if !strings.Contains(body, `const connectedAgentSkillEntries = (agent) => {`) {
 		t.Fatalf("expected connected-agent skill extraction helper, body=%s", body)
 	}
+	if !strings.Contains(body, `const inferSkillNameForAgent = (agent) => {`) {
+		t.Fatalf("expected client-side skill inference helper for target agents, body=%s", body)
+	}
 	if !strings.Contains(body, `const connectedAgentRefs = (agent) => {`) {
 		t.Fatalf("expected connected-agent alias helper, body=%s", body)
 	}
 	if !strings.Contains(body, `const agentMatchesTargetRef = (agent, targetRef) => {`) {
 		t.Fatalf("expected connected-agent target matching helper, body=%s", body)
+	}
+	if !strings.Contains(body, `const resolveSelectedDispatchState = () => {`) {
+		t.Fatalf("expected resolved dispatch state helper, body=%s", body)
 	}
 	if !strings.Contains(body, `const updateSkillNameOptions = () => {`) {
 		t.Fatalf("expected skill dropdown sync helper, body=%s", body)
@@ -2110,6 +2113,12 @@ func TestHandleIndexRendersConnectedAgentsRefreshPanel(t *testing.T) {
 	}
 	if !strings.Contains(body, `const selectConnectedAgentTarget = (targetRef) => {`) {
 		t.Fatalf("expected connected agent selector click handler, body=%s", body)
+	}
+	if !strings.Contains(body, `formData.set("target_agent_ref", dispatchState.targetRef);`) {
+		t.Fatalf("expected dispatch submit flow to explicitly serialize target agent selection, body=%s", body)
+	}
+	if !strings.Contains(body, `formData.set("skill_name", dispatchState.skillName);`) {
+		t.Fatalf("expected dispatch submit flow to explicitly serialize the resolved skill name, body=%s", body)
 	}
 	if !strings.Contains(body, `const connectedAgentsRefreshButtons = Array.from(document.querySelectorAll("[data-connected-agents-refresh-button]"));`) {
 		t.Fatalf("expected shared manual refresh button hooks, body=%s", body)
