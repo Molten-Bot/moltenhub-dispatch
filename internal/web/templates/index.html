@@ -126,7 +126,13 @@
               {{end}}
               </div>
             </fieldset>
-            <label>Skill Name<input name="skill_name" placeholder="Optional when the target agent has a default skill"></label>
+            <label>
+              Skill Name
+              <select id="skill-name-select" name="skill_name" aria-describedby="skill-name-hint" disabled>
+                <option value="">Select an agent first</option>
+              </select>
+            </label>
+            <p id="skill-name-hint" class="manual-dispatch-skill-hint">Select a target agent to load its advertised skills from Molten Hub.</p>
             <div class="manual-dispatch-actions">
               <button type="submit" class="dispatch-task-button prompt-action-button">Dispatch Task</button>
             </div>
@@ -446,6 +452,7 @@
     </section>
   </div>
   {{end}}
+  <script id="initial-connected-agents-data" type="application/json">{{toJSON .State.ConnectedAgents}}</script>
   <script>
     (() => {
       const shell = document.querySelector(".shell");
@@ -456,6 +463,8 @@
       const subActionsNotice = document.getElementById("sub-actions-notice");
       const manualDispatchTargets = document.getElementById("manual-dispatch-targets");
       const targetAgentRefInput = document.getElementById("target-agent-ref-input");
+      const skillNameSelect = document.getElementById("skill-name-select");
+      const skillNameHint = document.getElementById("skill-name-hint");
       const connectedAgentsList = document.getElementById("connected-agents-list");
       const connectedAgentsEmpty = document.getElementById("connected-agents-empty");
       const connectedAgentsRefreshButtons = Array.from(document.querySelectorAll("[data-connected-agents-refresh-button]"));
@@ -477,6 +486,7 @@
       const themeToggleLabel = document.getElementById("theme-toggle-label");
       const themeToggleIcon = document.getElementById("theme-toggle-icon");
       const themeToggleTooltip = document.getElementById("theme-toggle-tooltip");
+      const initialConnectedAgentsData = document.getElementById("initial-connected-agents-data");
 
       const THEME_KEY = "hubui.theme";
       const THEME_MODES = ["light", "dark", "night"];
@@ -1282,6 +1292,19 @@
         status: String(hubConnItem && hubConnItem.dataset.status || "").trim() || "disconnected",
         transport: String(hubConnItem && hubConnItem.dataset.transport || "").trim() || "offline",
       };
+      let latestConnectedAgents = [];
+
+      const parseInitialConnectedAgents = () => {
+        if (!(initialConnectedAgentsData instanceof HTMLScriptElement)) {
+          return [];
+        }
+        try {
+          const parsed = JSON.parse(initialConnectedAgentsData.textContent || "[]");
+          return Array.isArray(parsed) ? parsed : [];
+        } catch (_error) {
+          return [];
+        }
+      };
 
       const syncSubActions = (state = latestHubConnectionState) => {
         if (!subActions || !subActionsNotice) {
@@ -1447,6 +1470,105 @@
         return "";
       };
 
+      const connectedAgentSkillEntries = (agent) => {
+        const ordered = [];
+        const seen = new Set();
+        const pushSkill = (name, description = "", isDefault = false) => {
+          const skillName = trimmedString(name);
+          if (!skillName) {
+            return;
+          }
+          const key = skillName.toLowerCase();
+          if (seen.has(key)) {
+            return;
+          }
+          seen.add(key);
+          ordered.push({
+            name: skillName,
+            description: trimmedString(description),
+            isDefault,
+          });
+        };
+
+        pushSkill(agent && agent.default_skill, "Default skill for this agent.", true);
+
+        const advertisedSkills = Array.isArray(agent && agent.advertised_skills)
+          ? agent.advertised_skills
+          : [];
+        advertisedSkills.forEach((skill) => {
+          if (skill && typeof skill === "object") {
+            pushSkill(skill.name, skill.description);
+            return;
+          }
+          pushSkill(skill);
+        });
+
+        return ordered;
+      };
+
+      const updateSkillNameOptions = () => {
+        if (!(skillNameSelect instanceof HTMLSelectElement)) {
+          return;
+        }
+        const selectedTargetRef = trimmedString(targetAgentRefInput && targetAgentRefInput.value);
+        const selectedAgent = latestConnectedAgents.find((agent) => connectedAgentTargetRef(agent) === selectedTargetRef);
+        const previousSkill = trimmedString(skillNameSelect.value);
+        const skillEntries = connectedAgentSkillEntries(selectedAgent);
+
+        skillNameSelect.innerHTML = "";
+
+        if (!selectedAgent) {
+          skillNameSelect.disabled = true;
+          const option = document.createElement("option");
+          option.value = "";
+          option.textContent = "Select an agent first";
+          skillNameSelect.appendChild(option);
+          if (skillNameHint instanceof HTMLElement) {
+            skillNameHint.textContent = "Select a target agent to load its advertised skills from Molten Hub.";
+          }
+          return;
+        }
+
+        skillNameSelect.disabled = false;
+
+        if (skillEntries.length === 0) {
+          const option = document.createElement("option");
+          option.value = "";
+          option.textContent = "Use target agent default skill";
+          skillNameSelect.appendChild(option);
+          skillNameSelect.value = "";
+          if (skillNameHint instanceof HTMLElement) {
+            skillNameHint.textContent = "This agent did not advertise skills in Hub capabilities. Leave this blank only if the target agent defines its own default skill.";
+          }
+          return;
+        }
+
+        skillEntries.forEach((skill) => {
+          const option = document.createElement("option");
+          option.value = skill.name;
+          option.textContent = skill.isDefault ? `${skill.name} (default)` : skill.name;
+          if (skill.description) {
+            option.title = skill.description;
+          }
+          skillNameSelect.appendChild(option);
+        });
+
+        const hasPreviousSkill = previousSkill !== "" && skillEntries.some((skill) => skill.name === previousSkill);
+        if (hasPreviousSkill) {
+          skillNameSelect.value = previousSkill;
+        } else {
+          const defaultSkill = skillEntries.find((skill) => skill.isDefault);
+          skillNameSelect.value = defaultSkill ? defaultSkill.name : skillEntries[0].name;
+        }
+
+        if (skillNameHint instanceof HTMLElement) {
+          const selectedSkill = skillEntries.find((skill) => skill.name === skillNameSelect.value) || skillEntries[0];
+          skillNameHint.textContent = selectedSkill && selectedSkill.description
+            ? selectedSkill.description
+            : `Loaded ${skillEntries.length} skill${skillEntries.length === 1 ? "" : "s"} for ${connectedAgentDisplayName(selectedAgent)}.`;
+        }
+      };
+
       const syncConnectedAgentSelection = () => {
         if (!(manualDispatchTargets instanceof HTMLElement) || !(targetAgentRefInput instanceof HTMLInputElement)) {
           return;
@@ -1461,6 +1583,7 @@
           node.classList.toggle("is-selected", selected);
           node.setAttribute("aria-pressed", selected ? "true" : "false");
         });
+        updateSkillNameOptions();
       };
 
       const selectConnectedAgentTarget = (targetRef) => {
@@ -1563,6 +1686,7 @@
           return;
         }
         const nextAgents = Array.isArray(agents) ? agents : [];
+        latestConnectedAgents = nextAgents;
         connectedAgentsCount = nextAgents.length;
         if (shell instanceof HTMLElement) {
           shell.dataset.connectedAgentCount = String(connectedAgentsCount);
@@ -1794,7 +1918,10 @@
           });
         }
       });
-      syncConnectedAgentSelection();
+      if (skillNameSelect instanceof HTMLSelectElement) {
+        skillNameSelect.addEventListener("change", updateSkillNameOptions);
+      }
+      renderConnectedAgents(parseInitialConnectedAgents());
 
       setConnectedAgentsRefreshProgress(0);
       if (!bound) {
