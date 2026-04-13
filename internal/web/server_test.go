@@ -776,7 +776,10 @@ func TestHandleStylesUsesNeutralDefaultForSettingsDockButton(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200 response, got %d", rec.Code)
 	}
-	if !strings.Contains(body, ".hub-profile-button {\n  opacity: 1;\n  pointer-events: auto;\n  color: var(--muted-foreground);") {
+	if !strings.Contains(body, ".hub-profile-button {\n  opacity: 1;\n  pointer-events: auto;") {
+		t.Fatalf("expected settings dock button to use neutral default color token, body=%s", body)
+	}
+	if !strings.Contains(body, "color: var(--muted-foreground);") {
 		t.Fatalf("expected settings dock button to use neutral default color token, body=%s", body)
 	}
 	if !strings.Contains(body, ".hub-profile-button {\n  opacity: 1;\n  pointer-events: auto;\n  min-height: 40px;\n  padding: 0;\n  border: 0;\n  background: transparent;\n  box-shadow: none;") {
