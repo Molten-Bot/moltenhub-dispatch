@@ -1383,8 +1383,13 @@ func TestHandleIndexRendersConnectedAgentsRefreshPanel(t *testing.T) {
 			},
 			ConnectedAgents: []app.ConnectedAgent{
 				{
-					ID:   "dispatcher",
-					Name: "Dispatcher",
+					ID:           "dispatcher",
+					Name:         "Dispatcher",
+					DefaultSkill: "dispatch_skill_request",
+					AdvertisedSkills: []app.Skill{
+						{Name: "dispatch_skill_request", Description: "Dispatch a task."},
+						{Name: "review_failure_logs", Description: "Review logs."},
+					},
 				},
 			},
 		},
@@ -1428,6 +1433,15 @@ func TestHandleIndexRendersConnectedAgentsRefreshPanel(t *testing.T) {
 	if !strings.Contains(body, `id="manual-dispatch-targets"`) {
 		t.Fatalf("expected manual dispatch connected agent target list, body=%s", body)
 	}
+	if !strings.Contains(body, `id="skill-name-select" name="skill_name"`) {
+		t.Fatalf("expected skill-name dropdown in manual dispatch form, body=%s", body)
+	}
+	if strings.Contains(body, `name="skill_name" placeholder="Optional when the target agent has a default skill"`) {
+		t.Fatalf("did not expect deprecated freeform skill input, body=%s", body)
+	}
+	if !strings.Contains(body, `id="skill-name-hint"`) {
+		t.Fatalf("expected skill-name hint copy, body=%s", body)
+	}
 	if !strings.Contains(body, `data-connected-agent-target-ref="dispatcher"`) {
 		t.Fatalf("expected connected agent target ref on selectable card, body=%s", body)
 	}
@@ -1445,6 +1459,18 @@ func TestHandleIndexRendersConnectedAgentsRefreshPanel(t *testing.T) {
 	}
 	if !strings.Contains(body, `const syncConnectedAgentSelection = () => {`) {
 		t.Fatalf("expected connected agent card selection sync helper, body=%s", body)
+	}
+	if !strings.Contains(body, `const connectedAgentSkillEntries = (agent) => {`) {
+		t.Fatalf("expected connected-agent skill extraction helper, body=%s", body)
+	}
+	if !strings.Contains(body, `const updateSkillNameOptions = () => {`) {
+		t.Fatalf("expected skill dropdown sync helper, body=%s", body)
+	}
+	if !strings.Contains(body, `const initialConnectedAgentsData = document.getElementById("initial-connected-agents-data");`) {
+		t.Fatalf("expected initial connected-agents bootstrap payload, body=%s", body)
+	}
+	if !strings.Contains(body, `id="initial-connected-agents-data" type="application/json"`) {
+		t.Fatalf("expected serialized connected-agents bootstrap payload script, body=%s", body)
 	}
 	if !strings.Contains(body, `const selectConnectedAgentTarget = (targetRef) => {`) {
 		t.Fatalf("expected connected agent selector click handler, body=%s", body)
