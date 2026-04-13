@@ -100,7 +100,7 @@
       <section class="grid manual-dispatch-grid">
         <article class="panel">
           <h2>Manual Dispatch</h2>
-          <form method="post" action="/dispatch" class="stack">
+          <form id="manual-dispatch-form" method="post" action="/dispatch" class="stack">
             <input id="target-agent-ref-input" type="hidden" name="target_agent_ref">
             <fieldset class="manual-dispatch-target-fieldset">
               <legend>Target Agent Ref</legend>
@@ -139,8 +139,9 @@
             </label>
             <input id="skill-payload-format-input" type="hidden" name="payload_format" value="">
             <div class="manual-dispatch-actions">
-              <button type="submit" class="dispatch-task-button prompt-action-button">Dispatch Task</button>
+              <button id="dispatch-task-submit" type="submit" class="dispatch-task-button prompt-action-button">Dispatch Task</button>
             </div>
+            <p id="dispatch-submit-status" class="connected-agents-refresh-status" aria-live="polite"></p>
           </form>
         </article>
       </section>
@@ -466,6 +467,7 @@
       const hubConnText = document.getElementById("hub-conn-text");
       const subActions = document.getElementById("sub-actions");
       const subActionsNotice = document.getElementById("sub-actions-notice");
+      const manualDispatchForm = document.getElementById("manual-dispatch-form");
       const manualDispatchTargets = document.getElementById("manual-dispatch-targets");
       const targetAgentRefInput = document.getElementById("target-agent-ref-input");
       const skillNameSelect = document.getElementById("skill-name-select");
@@ -473,6 +475,8 @@
       const skillPayloadField = document.getElementById("skill-payload-field");
       const skillPayloadInput = document.getElementById("skill-payload-input");
       const skillPayloadFormatInput = document.getElementById("skill-payload-format-input");
+      const dispatchTaskSubmit = document.getElementById("dispatch-task-submit");
+      const dispatchSubmitStatus = document.getElementById("dispatch-submit-status");
       const connectedAgentsList = document.getElementById("connected-agents-list");
       const connectedAgentsEmpty = document.getElementById("connected-agents-empty");
       const connectedAgentsRefreshButtons = Array.from(document.querySelectorAll("[data-connected-agents-refresh-button]"));
@@ -1425,6 +1429,37 @@
       };
 
       const trimmedString = (value) => String(value || "").trim();
+      let dispatchRequestInFlight = false;
+      let dispatchStatusClearTimer = 0;
+
+      const setDispatchSubmitBusy = (busy) => {
+        if (!(dispatchTaskSubmit instanceof HTMLButtonElement)) {
+          return;
+        }
+        dispatchTaskSubmit.disabled = busy;
+        dispatchTaskSubmit.textContent = busy ? "Dispatching..." : "Dispatch Task";
+      };
+
+      const setDispatchSubmitStatus = (status, isError = false) => {
+        if (!(dispatchSubmitStatus instanceof HTMLElement)) {
+          return;
+        }
+        if (dispatchStatusClearTimer) {
+          window.clearTimeout(dispatchStatusClearTimer);
+          dispatchStatusClearTimer = 0;
+        }
+        const text = trimmedString(status);
+        dispatchSubmitStatus.classList.toggle("is-error", Boolean(isError) && text !== "");
+        dispatchSubmitStatus.textContent = text;
+        if (text === "") {
+          return;
+        }
+        dispatchStatusClearTimer = window.setTimeout(() => {
+          dispatchSubmitStatus.textContent = "";
+          dispatchSubmitStatus.classList.remove("is-error");
+          dispatchStatusClearTimer = 0;
+        }, 12000);
+      };
 
       const connectedAgentDisplayName = (agent) => {
         const displayName = trimmedString(agent && agent.name);
@@ -1945,6 +1980,51 @@
           });
         }
       });
+      if (manualDispatchForm instanceof HTMLFormElement) {
+        manualDispatchForm.addEventListener("submit", async (event) => {
+          event.preventDefault();
+          if (dispatchRequestInFlight) {
+            return;
+          }
+          dispatchRequestInFlight = true;
+          setDispatchSubmitBusy(true);
+          setDispatchSubmitStatus("Dispatching task...");
+          try {
+            const response = await fetch("/api/dispatch", {
+              method: "POST",
+              headers: { Accept: "application/json" },
+              body: new FormData(manualDispatchForm),
+            });
+            let body = null;
+            try {
+              body = await response.json();
+            } catch (_parseError) {
+              body = null;
+            }
+            if (!response.ok || !body || body.ok !== true) {
+              const message = trimmedString(body && body.error) || `dispatch request failed with ${response.status}`;
+              setDispatchSubmitStatus(message, true);
+              return;
+            }
+            if (skillPayloadInput instanceof HTMLTextAreaElement) {
+              skillPayloadInput.value = "";
+            }
+            if (skillPayloadFormatInput instanceof HTMLInputElement) {
+              const hasSelectedSkill = skillNameSelect instanceof HTMLSelectElement && trimmedString(skillNameSelect.value) !== "";
+              skillPayloadFormatInput.value = hasSelectedSkill ? "markdown" : "";
+            }
+            const successMessage = trimmedString(body && body.message)
+              || (trimmedString(body && body.task_id) ? `Dispatched task ${String(body.task_id).trim()}` : "Task dispatched.");
+            setDispatchSubmitStatus(successMessage);
+          } catch (error) {
+            const message = error instanceof Error ? error.message : "Unable to dispatch task.";
+            setDispatchSubmitStatus(message, true);
+          } finally {
+            dispatchRequestInFlight = false;
+            setDispatchSubmitBusy(false);
+          }
+        });
+      }
       if (skillNameSelect instanceof HTMLSelectElement) {
         skillNameSelect.addEventListener("change", updateSkillNameOptions);
       }
