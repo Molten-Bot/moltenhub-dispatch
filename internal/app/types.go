@@ -13,6 +13,8 @@ const (
 
 	ConnectionStatusDisconnected = "disconnected"
 	ConnectionStatusConnected    = "connected"
+
+	DispatchSelectionRequiredMessage = "Please select agent, skill to dispatch a request."
 )
 
 type Settings struct {

@@ -1264,7 +1264,7 @@ func (s *Service) resolveDispatchTarget(state AppState, req DispatchRequest) (Co
 
 	skillName := strings.TrimSpace(req.SkillName)
 	if skillName == "" {
-		return ConnectedAgent{}, errors.New("skill_name is required when target_agent_ref is empty")
+		return ConnectedAgent{}, errors.New(DispatchSelectionRequiredMessage)
 	}
 
 	for _, agent := range state.ConnectedAgents {

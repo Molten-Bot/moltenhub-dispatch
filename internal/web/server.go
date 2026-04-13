@@ -462,6 +462,39 @@ func decodeStructuredJSONPayload(raw string) (any, bool) {
 }
 
 func dispatchRequestFromValues(values url.Values) (app.DispatchRequest, error) {
+	targetAgentRef := support.FirstNonEmptyString(
+		strings.TrimSpace(values.Get("target_agent_ref")),
+		strings.TrimSpace(values.Get("targetAgentRef")),
+		strings.TrimSpace(values.Get("selected_agent_ref")),
+		strings.TrimSpace(values.Get("selectedAgentRef")),
+		strings.TrimSpace(values.Get("agent_ref")),
+		strings.TrimSpace(values.Get("agentRef")),
+		strings.TrimSpace(values.Get("target_agent_uuid")),
+		strings.TrimSpace(values.Get("targetAgentUUID")),
+		strings.TrimSpace(values.Get("selected_agent_uuid")),
+		strings.TrimSpace(values.Get("selectedAgentUUID")),
+		strings.TrimSpace(values.Get("target_agent_uri")),
+		strings.TrimSpace(values.Get("targetAgentURI")),
+		strings.TrimSpace(values.Get("selected_agent_uri")),
+		strings.TrimSpace(values.Get("selectedAgentURI")),
+	)
+	skillName := support.FirstNonEmptyString(
+		strings.TrimSpace(values.Get("skill_name")),
+		strings.TrimSpace(values.Get("skillName")),
+		strings.TrimSpace(values.Get("selected_skill")),
+		strings.TrimSpace(values.Get("selectedSkill")),
+		strings.TrimSpace(values.Get("selected_skill_name")),
+		strings.TrimSpace(values.Get("selectedSkillName")),
+		strings.TrimSpace(values.Get("selected_task")),
+		strings.TrimSpace(values.Get("selectedTask")),
+		strings.TrimSpace(values.Get("task_name")),
+		strings.TrimSpace(values.Get("taskName")),
+		strings.TrimSpace(values.Get("task")),
+	)
+	if targetAgentRef == "" && skillName == "" {
+		return app.DispatchRequest{}, errors.New(app.DispatchSelectionRequiredMessage)
+	}
+
 	payloadText := strings.TrimSpace(values.Get("payload"))
 	payloadFormat := strings.ToLower(strings.TrimSpace(values.Get("payload_format")))
 	var payloadValue any
@@ -495,36 +528,6 @@ func dispatchRequestFromValues(values url.Values) (app.DispatchRequest, error) {
 		}
 		timeout = seconds
 	}
-
-	targetAgentRef := support.FirstNonEmptyString(
-		strings.TrimSpace(values.Get("target_agent_ref")),
-		strings.TrimSpace(values.Get("targetAgentRef")),
-		strings.TrimSpace(values.Get("selected_agent_ref")),
-		strings.TrimSpace(values.Get("selectedAgentRef")),
-		strings.TrimSpace(values.Get("agent_ref")),
-		strings.TrimSpace(values.Get("agentRef")),
-		strings.TrimSpace(values.Get("target_agent_uuid")),
-		strings.TrimSpace(values.Get("targetAgentUUID")),
-		strings.TrimSpace(values.Get("selected_agent_uuid")),
-		strings.TrimSpace(values.Get("selectedAgentUUID")),
-		strings.TrimSpace(values.Get("target_agent_uri")),
-		strings.TrimSpace(values.Get("targetAgentURI")),
-		strings.TrimSpace(values.Get("selected_agent_uri")),
-		strings.TrimSpace(values.Get("selectedAgentURI")),
-	)
-	skillName := support.FirstNonEmptyString(
-		strings.TrimSpace(values.Get("skill_name")),
-		strings.TrimSpace(values.Get("skillName")),
-		strings.TrimSpace(values.Get("selected_skill")),
-		strings.TrimSpace(values.Get("selectedSkill")),
-		strings.TrimSpace(values.Get("selected_skill_name")),
-		strings.TrimSpace(values.Get("selectedSkillName")),
-		strings.TrimSpace(values.Get("selected_task")),
-		strings.TrimSpace(values.Get("selectedTask")),
-		strings.TrimSpace(values.Get("task_name")),
-		strings.TrimSpace(values.Get("taskName")),
-		strings.TrimSpace(values.Get("task")),
-	)
 
 	return app.DispatchRequest{
 		TargetAgentRef: targetAgentRef,

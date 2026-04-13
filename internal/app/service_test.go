@@ -1871,7 +1871,7 @@ func TestDispatchFromUIInfersDefaultSkillForTargetAgent(t *testing.T) {
 	}
 }
 
-func TestDispatchFromUIRequiresSkillNameWhenTargetAgentRefIsBlank(t *testing.T) {
+func TestDispatchFromUIRequiresSelectionWhenTargetAndSkillAreBlank(t *testing.T) {
 	t.Parallel()
 
 	service, _ := newTestService(t)
@@ -1890,7 +1890,7 @@ func TestDispatchFromUIRequiresSkillNameWhenTargetAgentRefIsBlank(t *testing.T) 
 	if err == nil {
 		t.Fatal("expected validation error for empty target + skill")
 	}
-	if got := err.Error(); got != "skill_name is required when target_agent_ref is empty" {
+	if got := err.Error(); got != DispatchSelectionRequiredMessage {
 		t.Fatalf("unexpected error: %q", got)
 	}
 }
@@ -1961,7 +1961,7 @@ func TestHandleSkillRequestAcceptsTargetAgentRefViaInput(t *testing.T) {
 	}
 }
 
-func TestHandleSkillRequestRequiresSkillNameWhenTargetAgentRefIsBlank(t *testing.T) {
+func TestHandleSkillRequestRequiresSelectionWhenTargetAndSkillAreBlank(t *testing.T) {
 	t.Parallel()
 
 	service, fake := newTestService(t)
@@ -1997,7 +1997,7 @@ func TestHandleSkillRequestRequiresSkillNameWhenTargetAgentRefIsBlank(t *testing
 	if !ok {
 		t.Fatalf("unexpected failure payload type: %T", fake.publishCalls[0].Message.Payload)
 	}
-	if got := failurePayload["error"]; got != "skill_name is required when target_agent_ref is empty" {
+	if got := failurePayload["error"]; got != DispatchSelectionRequiredMessage {
 		t.Fatalf("unexpected failure error payload: %#v", got)
 	}
 	if got := failurePayload["status"]; got != "failed" {
