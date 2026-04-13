@@ -361,7 +361,13 @@ func TestHandleIndexRendersConsoleTitleAndSubtitle(t *testing.T) {
 	if !strings.Contains(body, `<title>Molten Hub Console</title>`) {
 		t.Fatalf("expected document title to be Molten Hub Console, body=%s", body)
 	}
-	if !strings.Contains(body, `>Molten Hub Console</p>`) {
+	if !strings.Contains(body, `class="brand-logo rotating-brand-logo brand-logo-visible"`) {
+		t.Fatalf("expected page header logo lockup, body=%s", body)
+	}
+	if !strings.Contains(body, `src="/static/logo.svg"`) {
+		t.Fatalf("expected page header to use the bundled logo asset, body=%s", body)
+	}
+	if !strings.Contains(body, `>Molten Hub Console</div>`) {
 		t.Fatalf("expected page header title copy, body=%s", body)
 	}
 	if !strings.Contains(body, `>Dispatch work to your quiet army.</p>`) {
