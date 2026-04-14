@@ -2287,10 +2287,24 @@
             method: "GET",
             headers: { Accept: "application/json" },
           });
-          if (!response.ok) {
-            throw new Error(`connected agents refresh failed with ${response.status}`);
+          let body = null;
+          try {
+            body = await response.json();
+          } catch (_parseError) {
+            body = null;
           }
-          const body = await response.json();
+          if (!response.ok) {
+            const staleAgents = Array.isArray(body && body.connected_agents)
+              ? body.connected_agents
+              : null;
+            if (staleAgents) {
+              renderConnectedAgents(staleAgents);
+            }
+            const detail = trimmedString(body && body.detail)
+              || trimmedString(body && body.error)
+              || `connected agents refresh failed with ${response.status}`;
+            throw new Error(detail);
+          }
           const agents = Array.isArray(body && body.connected_agents)
             ? body.connected_agents
             : [];
