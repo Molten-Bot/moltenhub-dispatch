@@ -37,20 +37,6 @@ type realtimeEnvelope struct {
 	} `json:"error"`
 }
 
-type realtimeDelivery struct {
-	Delivery struct {
-		DeliveryID string `json:"delivery_id"`
-	} `json:"delivery"`
-	DeliveryID      string          `json:"delivery_id"`
-	MessageID       string          `json:"message_id"`
-	FromAgentUUID   string          `json:"from_agent_uuid"`
-	FromAgentURI    string          `json:"from_agent_uri"`
-	ToAgentUUID     string          `json:"to_agent_uuid"`
-	ToAgentURI      string          `json:"to_agent_uri"`
-	Message         OpenClawMessage `json:"message"`
-	OpenClawMessage OpenClawMessage `json:"openclaw_message"`
-}
-
 func (c *Client) ConnectOpenClaw(ctx context.Context, token, sessionKey string) (RealtimeSession, error) {
 	wsURL, err := websocketURL(c.baseURL, "/openclaw/messages/ws", sessionKey)
 	if err != nil {
@@ -101,7 +87,7 @@ func (s *websocketSession) Receive(ctx context.Context) (PullResponse, error) {
 		}
 		switch {
 		case strings.EqualFold(envelope.Type, "delivery"):
-			return decodeRealtimeDelivery(envelope.Result)
+			return decodePullResponsePayload(envelope.Result, "realtime delivery")
 		case strings.EqualFold(envelope.Type, "__close__"):
 			return PullResponse{}, fmt.Errorf("hub websocket session closed")
 		case strings.EqualFold(envelope.Type, "__error__"):
@@ -143,7 +129,7 @@ func (s *websocketSession) respond(ctx context.Context, action, deliveryID strin
 		}
 		switch {
 		case strings.EqualFold(envelope.Type, "delivery"):
-			message, decodeErr := decodeRealtimeDelivery(envelope.Result)
+			message, decodeErr := decodePullResponsePayload(envelope.Result, "realtime delivery")
 			if decodeErr != nil {
 				return decodeErr
 			}
@@ -199,33 +185,6 @@ func (s *websocketSession) applyDeadline(ctx context.Context) error {
 		return s.conn.SetDeadline(deadline)
 	}
 	return s.conn.SetDeadline(time.Time{})
-}
-
-func decodeRealtimeDelivery(raw json.RawMessage) (PullResponse, error) {
-	var delivery realtimeDelivery
-	if err := json.Unmarshal(raw, &delivery); err != nil {
-		return PullResponse{}, fmt.Errorf("decode realtime delivery: %w", err)
-	}
-
-	message := delivery.OpenClawMessage
-	if message.Kind == "" && message.Type == "" {
-		message = delivery.Message
-	}
-
-	deliveryID := strings.TrimSpace(delivery.Delivery.DeliveryID)
-	if deliveryID == "" {
-		deliveryID = strings.TrimSpace(delivery.DeliveryID)
-	}
-
-	return PullResponse{
-		DeliveryID:      deliveryID,
-		MessageID:       strings.TrimSpace(delivery.MessageID),
-		FromAgentUUID:   strings.TrimSpace(delivery.FromAgentUUID),
-		FromAgentURI:    strings.TrimSpace(delivery.FromAgentURI),
-		ToAgentUUID:     strings.TrimSpace(delivery.ToAgentUUID),
-		ToAgentURI:      strings.TrimSpace(delivery.ToAgentURI),
-		OpenClawMessage: message,
-	}, nil
 }
 
 func websocketURL(baseURL, endpoint, sessionKey string) (string, error) {

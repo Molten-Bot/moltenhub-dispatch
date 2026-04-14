@@ -798,6 +798,54 @@ func TestOpenClawHTTPMethodsMatchRuntimeContract(t *testing.T) {
 	}
 }
 
+func TestPullOpenClawDecodesMessageAliasesFromRuntimeContract(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/runtime/openclaw/pull" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok": true,
+			"result": map[string]any{
+				"delivery": map[string]any{
+					"delivery_id": "delivery-2",
+				},
+				"message_id":      "message-2",
+				"from_agent_uuid": "source-agent",
+				"message": map[string]any{
+					"kind":       "skill_result",
+					"request_id": "request-2",
+				},
+			},
+		})
+	}))
+	defer server.Close()
+
+	client := hub.NewClient(server.URL)
+	client.SetRuntimeEndpoints(hub.RuntimeEndpoints{
+		OpenClawPullURL: server.URL + "/runtime/openclaw/pull",
+	})
+
+	pull, ok, err := client.PullOpenClaw(context.Background(), "agent-token", 5*time.Second)
+	if err != nil {
+		t.Fatalf("pull openclaw: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected pull message")
+	}
+	if got, want := pull.DeliveryID, "delivery-2"; got != want {
+		t.Fatalf("delivery_id = %q, want %q", got, want)
+	}
+	if got, want := pull.OpenClawMessage.Kind, "skill_result"; got != want {
+		t.Fatalf("message kind = %q, want %q", got, want)
+	}
+	if got, want := pull.OpenClawMessage.RequestID, "request-2"; got != want {
+		t.Fatalf("request_id = %q, want %q", got, want)
+	}
+}
+
 func TestCheckPingUsesRootPingPathFromVersionedBaseURL(t *testing.T) {
 	t.Parallel()
 
