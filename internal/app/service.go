@@ -925,10 +925,6 @@ func (s *Service) publishFailureToCaller(ctx context.Context, state AppState, pe
 	}
 
 	failurePayload := callerFailurePayload(report, logPaths)
-	errorMessage := strings.TrimSpace(report.Error)
-	if errorMessage == "" {
-		errorMessage = report.Message
-	}
 
 	message := hub.OpenClawMessage{
 		Protocol:      openClawHTTPProtocol,
@@ -939,7 +935,7 @@ func (s *Service) publishFailureToCaller(ctx context.Context, state AppState, pe
 		ReplyTo:       pending.CallerRequestID,
 		PayloadFormat: "json",
 		Payload:       failurePayload,
-		Error:         explicitFailureMessage(errorMessage),
+		Error:         callerFailureError(report),
 		ErrorDetail:   failurePayload,
 		OK:            boolPtr(false),
 		Status:        "failed",
@@ -1489,6 +1485,27 @@ func callerFailurePayload(report failureReport, logPaths []string) map[string]an
 	payload["error_details"] = detail
 	payload["log_paths"] = logPaths
 	return payload
+}
+
+func callerFailureError(report failureReport) string {
+	summary := explicitFailureMessage(report.Message)
+	errText := strings.TrimSpace(report.Error)
+	switch {
+	case summary == "" && errText == "":
+		return "Task failed."
+	case summary == "":
+		return explicitFailureMessage(errText)
+	case errText == "":
+		return summary
+	case strings.EqualFold(summary, errText):
+		return summary
+	default:
+		separator := ". Error: "
+		if strings.HasSuffix(summary, ".") || strings.HasSuffix(summary, "!") || strings.HasSuffix(summary, "?") {
+			separator = " Error: "
+		}
+		return summary + separator + errText
+	}
 }
 
 func explicitFailureMessage(message string) string {
