@@ -2454,6 +2454,12 @@ func TestHandleIndexRendersConnectedAgentsRefreshPanel(t *testing.T) {
 	if !strings.Contains(body, "Offline") {
 		t.Fatalf("expected presence badge on connected agent cards, body=%s", body)
 	}
+	if !strings.Contains(body, `class="connected-agent-skills"`) {
+		t.Fatalf("expected connected agent skill list on cards, body=%s", body)
+	}
+	if !strings.Contains(body, `class="connected-agent-skill"`) {
+		t.Fatalf("expected connected agent skill chip styling in markup, body=%s", body)
+	}
 	if !strings.Contains(body, `id="target-agent-ref-input"`) {
 		t.Fatalf("expected hidden target agent ref input for card selection UI, body=%s", body)
 	}
@@ -2511,6 +2517,12 @@ func TestHandleIndexRendersConnectedAgentsRefreshPanel(t *testing.T) {
 	if !strings.Contains(body, `const inferSkillNameForAgent = (agent) => {`) {
 		t.Fatalf("expected client-side skill inference helper for target agents, body=%s", body)
 	}
+	if !strings.Contains(body, `const visibleAgentLabel = (value) => {`) {
+		t.Fatalf("expected client-side visible label helper for connected agents, body=%s", body)
+	}
+	if !strings.Contains(body, `const looksLikeUUID = (value) => {`) {
+		t.Fatalf("expected UUID suppression helper in connected agent client rendering, body=%s", body)
+	}
 	if !strings.Contains(body, `const connectedAgentRefs = (agent) => {`) {
 		t.Fatalf("expected connected-agent alias helper, body=%s", body)
 	}
@@ -2531,6 +2543,9 @@ func TestHandleIndexRendersConnectedAgentsRefreshPanel(t *testing.T) {
 	}
 	if !strings.Contains(body, `const selectConnectedAgentTarget = (targetRef, options = {}) => {`) {
 		t.Fatalf("expected connected agent selector click handler, body=%s", body)
+	}
+	if !strings.Contains(body, `const buildConnectedAgentSkills = (agent) => {`) {
+		t.Fatalf("expected connected agent skill list renderer in client script, body=%s", body)
 	}
 	if !strings.Contains(body, `formData.set("target_agent_ref", dispatchState.targetRef);`) {
 		t.Fatalf("expected dispatch submit flow to explicitly serialize target agent selection, body=%s", body)
@@ -2568,11 +2583,68 @@ func TestHandleIndexRendersConnectedAgentsRefreshPanel(t *testing.T) {
 	if !strings.Contains(body, `setConnectedAgentsRefreshState(false, "");`) {
 		t.Fatalf("expected refresh completion to clear the status text, body=%s", body)
 	}
-	if !strings.Contains(body, `} else if (shouldPollConnectedAgents()) {`) {
-		t.Fatalf("expected bound-session refresh bootstrapping to depend on missing agents, body=%s", body)
+	if !strings.Contains(body, "void refreshConnectedAgents(\"initial\");\n        if (shouldPollConnectedAgents()) {\n          startConnectedAgentsRefreshTicker();") {
+		t.Fatalf("expected bound-session bootstrapping to perform an initial API refresh before deciding whether to continue polling, body=%s", body)
 	}
 	if strings.Contains(body, "toLocaleTimeString") {
 		t.Fatalf("did not expect connected agents refresh timestamp formatting, body=%s", body)
+	}
+}
+
+func TestHandleIndexHidesUUIDsAndShowsHubAgentMetadata(t *testing.T) {
+	t.Parallel()
+
+	server, err := New(&stubService{
+		state: app.AppState{
+			Settings: app.DefaultSettings(),
+			Session: app.Session{
+				AgentToken: "agent-token",
+			},
+			Connection: app.ConnectionState{
+				Status:    app.ConnectionStatusConnected,
+				Transport: app.ConnectionTransportHTTP,
+			},
+			ConnectedAgents: []app.ConnectedAgent{
+				{
+					AgentID:   "8d9add87-10b1-4ee4-a138-acde48001122",
+					AgentUUID: "8d9add87-10b1-4ee4-a138-acde48001122",
+					URI:       "molten://agent/hub-worker",
+					Metadata: &hub.AgentMetadata{
+						DisplayName: "Hub Worker",
+						Emoji:       "🧪",
+						AdvertisedSkills: []map[string]any{
+							{"name": "review_openapi", "description": "Review Hub API integration behavior."},
+							{"name": "review_failure_logs", "description": "Review failing logs."},
+						},
+						Presence: &hub.AgentPresence{Status: "online"},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, ">Hub Worker<") {
+		t.Fatalf("expected hub display name to render on the agent card, body=%s", body)
+	}
+	if !strings.Contains(body, "🧪") {
+		t.Fatalf("expected hub emoji to render on the agent card, body=%s", body)
+	}
+	if !strings.Contains(body, ">Online<") {
+		t.Fatalf("expected hub presence badge to render online status, body=%s", body)
+	}
+	if !strings.Contains(body, ">review_openapi<") || !strings.Contains(body, ">review_failure_logs<") {
+		t.Fatalf("expected hub advertised skills to render on the agent card, body=%s", body)
+	}
+	if strings.Contains(body, ">8d9add87-10b1-4ee4-a138-acde48001122<") {
+		t.Fatalf("did not expect UUID values to be rendered as visible card labels, body=%s", body)
 	}
 }
 

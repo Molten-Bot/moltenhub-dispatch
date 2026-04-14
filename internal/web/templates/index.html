@@ -164,26 +164,40 @@
               <p class="manual-dispatch-field-copy">Pick the worker that should receive this task. Dispatch keeps the selection synced when the connected-agent list refreshes.</p>
               <div id="manual-dispatch-targets" class="list connected-agents-list connected-agents-list-selectable manual-dispatch-targets-grid">
               {{range .State.ConnectedAgents}}
+              {{$displayName := connectedAgentDisplayName .}}
+              {{$secondaryLabel := connectedAgentSecondaryLabel .}}
+              {{$presenceStatus := connectedAgentPresenceStatus .}}
+              {{$presenceLabel := connectedAgentPresenceLabel .}}
+              {{$skills := connectedAgentSkills .}}
               <button
                 type="button"
                 class="connected-agent-card connected-agent-card-button"
-                data-connected-agent-target-ref="{{if .AgentID}}{{.AgentID}}{{else if .Handle}}{{.Handle}}{{else if .AgentUUID}}{{.AgentUUID}}{{else if .URI}}{{.URI}}{{end}}"
-                data-connected-agent-refs="{{if .AgentID}}{{.AgentID}}{{end}}{{if .Handle}}{{if .AgentID}}&#10;{{end}}{{.Handle}}{{end}}{{if .AgentUUID}}{{if or .AgentID .Handle}}&#10;{{end}}{{.AgentUUID}}{{end}}{{if .URI}}{{if or .AgentID .Handle .AgentUUID}}&#10;{{end}}{{.URI}}{{end}}"
-                data-connected-agent-display="{{if and .Metadata .Metadata.DisplayName}}{{.Metadata.DisplayName}}{{else if .Handle}}{{.Handle}}{{else if .AgentID}}{{.AgentID}}{{else if .URI}}{{.URI}}{{else if .AgentUUID}}{{.AgentUUID}}{{else}}Unknown agent{{end}}"
+                data-connected-agent-target-ref="{{if .AgentID}}{{.AgentID}}{{else if .Handle}}{{.Handle}}{{else if .URI}}{{.URI}}{{else if .AgentUUID}}{{.AgentUUID}}{{end}}"
+                data-connected-agent-refs="{{if .AgentID}}{{.AgentID}}{{end}}{{if .Handle}}{{if .AgentID}}&#10;{{end}}{{.Handle}}{{end}}{{if .URI}}{{if or .AgentID .Handle}}&#10;{{end}}{{.URI}}{{end}}{{if .AgentUUID}}{{if or .AgentID .Handle .URI}}&#10;{{end}}{{.AgentUUID}}{{end}}"
+                data-connected-agent-display="{{$displayName}}"
                 aria-pressed="false"
               >
                 <div class="connected-agent-card-main">
                   <div class="connected-agent-card-copy">
                     <h3>
-                      <span class="connected-agent-title-emoji">{{if and .Metadata .Metadata.Emoji}}{{.Metadata.Emoji}}{{else}}🤖{{end}}</span>
-                      <span>{{if and .Metadata .Metadata.DisplayName}}{{.Metadata.DisplayName}}{{else if .Handle}}{{.Handle}}{{else if .AgentID}}{{.AgentID}}{{else if .URI}}{{.URI}}{{else if .AgentUUID}}{{.AgentUUID}}{{else}}Unknown agent{{end}}</span>
+                      <span class="connected-agent-title-emoji">{{connectedAgentEmoji .}}</span>
+                      <span>{{$displayName}}</span>
                     </h3>
-                    <p class="connected-agent-secondary">{{if .AgentID}}{{.AgentID}}{{else if .URI}}{{.URI}}{{else if .Handle}}{{.Handle}}{{else if .AgentUUID}}{{.AgentUUID}}{{else}}unknown{{end}}</p>
+                    {{if $secondaryLabel}}<p class="connected-agent-secondary">{{$secondaryLabel}}</p>{{end}}
+                    {{if $skills}}
+                    <ul class="connected-agent-skills" aria-label="Advertised skills">
+                      {{range $skills}}
+                      <li class="connected-agent-skill"{{if .Description}} title="{{.Description}}"{{end}}>{{.Name}}</li>
+                      {{end}}
+                    </ul>
+                    {{else}}
+                    <p class="connected-agent-skills-empty">No skills advertised</p>
+                    {{end}}
                   </div>
                   <div class="connected-agent-card-meta">
-                    <span class="connected-agent-presence {{if and .Metadata .Metadata.Presence (eq .Metadata.Presence.Status "online")}}is-online{{else if eq .Status "online"}}is-online{{else}}is-offline{{end}}">
+                    <span class="connected-agent-presence {{if eq $presenceStatus "online"}}is-online{{else}}is-offline{{end}}">
                       <span class="connected-agent-presence-dot" aria-hidden="true"></span>
-                      <span>{{if and .Metadata .Metadata.Presence (eq .Metadata.Presence.Status "online")}}Online{{else if eq .Status "online"}}Online{{else}}Offline{{end}}</span>
+                      <span>{{$presenceLabel}}</span>
                     </span>
                     <span class="connected-agent-selection-badge" aria-hidden="true">Selected</span>
                   </div>
@@ -1754,47 +1768,28 @@
       };
 
       const connectedAgentDisplayName = (agent) => {
-        const displayName = trimmedString(agent && agent.metadata && agent.metadata.display_name);
-        if (displayName) {
-          return displayName;
+        for (const candidate of [
+          agent && agent.metadata && agent.metadata.display_name,
+          agent && agent.handle,
+          agent && agent.agent_id,
+          agent && agent.uri,
+        ]) {
+          const label = visibleAgentLabel(candidate);
+          if (label) {
+            return label;
+          }
         }
-        const handle = trimmedString(agent && agent.handle);
-        if (handle) {
-          return handle;
-        }
-        const agentID = trimmedString(agent && agent.agent_id);
-        if (agentID) {
-          return agentID;
-        }
-        const uri = trimmedString(agent && agent.uri);
-        if (uri) {
-          return uri;
-        }
-        const uuid = trimmedString(agent && agent.agent_uuid);
-        if (uuid) {
-          return uuid;
-        }
-        return "Unknown agent";
+        return "Connected agent";
       };
 
       const connectedAgentSecondaryLabel = (agent) => {
-        const agentID = trimmedString(agent && agent.agent_id);
-        if (agentID) {
-          return agentID;
+        for (const candidate of [agent && agent.agent_id, agent && agent.handle, agent && agent.uri]) {
+          const label = visibleAgentLabel(candidate);
+          if (label) {
+            return label;
+          }
         }
-        const uri = trimmedString(agent && agent.uri);
-        if (uri) {
-          return uri;
-        }
-        const handle = trimmedString(agent && agent.handle);
-        if (handle) {
-          return handle;
-        }
-        const uuid = trimmedString(agent && agent.agent_uuid);
-        if (uuid) {
-          return uuid;
-        }
-        return "unknown";
+        return "";
       };
 
       const connectedAgentPrimaryLabel = (agent) => {
@@ -1810,13 +1805,13 @@
         if (handle) {
           return handle;
         }
-        const uuid = trimmedString(agent && agent.agent_uuid);
-        if (uuid) {
-          return uuid;
-        }
         const uri = trimmedString(agent && agent.uri);
         if (uri) {
           return uri;
+        }
+        const uuid = trimmedString(agent && agent.agent_uuid);
+        if (uuid) {
+          return uuid;
         }
         return "";
       };
@@ -1824,7 +1819,7 @@
       const connectedAgentRefs = (agent) => {
         const ordered = [];
         const seen = new Set();
-        [agent && agent.agent_id, agent && agent.handle, agent && agent.agent_uuid, agent && agent.uri].forEach((value) => {
+        [agent && agent.agent_id, agent && agent.handle, agent && agent.uri, agent && agent.agent_uuid].forEach((value) => {
           const ref = trimmedString(value);
           if (!ref) {
             return;
@@ -1912,6 +1907,20 @@
           return "online";
         }
         return "offline";
+      };
+
+      const canonicalUUIDPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+      const looksLikeUUID = (value) => {
+        return canonicalUUIDPattern.test(trimmedString(value));
+      };
+
+      const visibleAgentLabel = (value) => {
+        const label = trimmedString(value);
+        if (!label || looksLikeUUID(label)) {
+          return "";
+        }
+        return label;
       };
 
       const inferSkillNameForAgent = (agent) => {
@@ -2145,6 +2154,32 @@
         return "🤖";
       };
 
+      const buildConnectedAgentSkills = (agent) => {
+        const skillEntries = connectedAgentSkillEntries(agent);
+        if (skillEntries.length === 0) {
+          const empty = document.createElement("p");
+          empty.className = "connected-agent-skills-empty";
+          empty.textContent = "No skills advertised";
+          return empty;
+        }
+
+        const list = document.createElement("ul");
+        list.className = "connected-agent-skills";
+        list.setAttribute("aria-label", "Advertised skills");
+
+        skillEntries.forEach((skill) => {
+          const item = document.createElement("li");
+          item.className = "connected-agent-skill";
+          item.textContent = skill.name;
+          if (skill.description) {
+            item.title = skill.description;
+          }
+          list.appendChild(item);
+        });
+
+        return list;
+      };
+
       const buildConnectedAgentCard = (agent, selectable = false) => {
         const card = document.createElement(selectable ? "button" : "article");
         card.className = selectable
@@ -2186,12 +2221,15 @@
         title.appendChild(titleEmoji);
         title.appendChild(titleText);
 
-        const secondary = document.createElement("p");
-        secondary.className = "connected-agent-secondary";
-        secondary.textContent = connectedAgentSecondaryLabel(agent);
-
         copy.appendChild(title);
-        copy.appendChild(secondary);
+        const secondaryLabel = connectedAgentSecondaryLabel(agent);
+        if (secondaryLabel) {
+          const secondary = document.createElement("p");
+          secondary.className = "connected-agent-secondary";
+          secondary.textContent = secondaryLabel;
+          copy.appendChild(secondary);
+        }
+        copy.appendChild(buildConnectedAgentSkills(agent));
         cardMain.appendChild(copy);
 
         const meta = document.createElement("div");
@@ -2641,13 +2679,11 @@
       setConnectedAgentsRefreshProgress(0);
       if (!bound) {
         setConnectedAgentsRefreshState(false, "Bind to Molten Hub to refresh connected agents.");
-      } else if (shouldPollConnectedAgents()) {
-        startConnectedAgentsRefreshTicker();
-        scheduleConnectedAgentsAutoRefresh();
-        void refreshConnectedAgents("initial");
       } else {
-        stopConnectedAgentsAutoRefresh("Auto-refresh paused while agents are connected.");
-        setConnectedAgentsRefreshState(false, "");
+        void refreshConnectedAgents("initial");
+        if (shouldPollConnectedAgents()) {
+          startConnectedAgentsRefreshTicker();
+        }
       }
     })();
   </script>
