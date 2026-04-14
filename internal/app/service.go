@@ -925,6 +925,10 @@ func (s *Service) publishFailureToCaller(ctx context.Context, state AppState, pe
 	}
 
 	failurePayload := callerFailurePayload(report, logPaths)
+	errorMessage := strings.TrimSpace(report.Error)
+	if errorMessage == "" {
+		errorMessage = report.Message
+	}
 
 	message := hub.OpenClawMessage{
 		Protocol:      openClawHTTPProtocol,
@@ -935,7 +939,7 @@ func (s *Service) publishFailureToCaller(ctx context.Context, state AppState, pe
 		ReplyTo:       pending.CallerRequestID,
 		PayloadFormat: "json",
 		Payload:       failurePayload,
-		Error:         explicitFailureMessage(report.Error),
+		Error:         explicitFailureMessage(errorMessage),
 		ErrorDetail:   failurePayload,
 		OK:            boolPtr(false),
 		Status:        "failed",

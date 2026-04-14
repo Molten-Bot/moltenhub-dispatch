@@ -1179,8 +1179,8 @@ func TestHandleDownstreamFailureSendsDetailedFailureWithoutFollowUp(t *testing.T
 	if failureMessage.Type != "skill_result" {
 		t.Fatalf("unexpected caller message type: %s", failureMessage.Type)
 	}
-	if !strings.Contains(strings.ToLower(failureMessage.Error), "failed") {
-		t.Fatalf("expected failure error to explicitly state failure, got %q", failureMessage.Error)
+	if failureMessage.Error != "task execution failed" {
+		t.Fatalf("unexpected explicit caller failure error: %#v", failureMessage.Error)
 	}
 	failurePayload, ok := failureMessage.Payload.(map[string]any)
 	if !ok {
@@ -1407,6 +1407,9 @@ func TestHandleDownstreamPlaintextRunnerFailureReturnsErrorDetailsWithoutFollowU
 	}
 	if got := failurePayload["error"]; got != "error connecting to api.github.com" {
 		t.Fatalf("unexpected caller failure error: %#v", got)
+	}
+	if got := fake.publishCalls[0].Message.Error; got != "Task failed: error connecting to api.github.com" {
+		t.Fatalf("unexpected caller failure error summary: %#v", got)
 	}
 	if got := failurePayload["failure"]; got != true {
 		t.Fatalf("expected failure marker in caller payload, got %#v", got)

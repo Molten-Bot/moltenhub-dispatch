@@ -2051,6 +2051,9 @@ func TestHandleIndexRendersCompletedOnboardingFlowForBoundSession(t *testing.T) 
 	if !strings.Contains(body, "Edit Agent Profile") {
 		t.Fatalf("expected profile editor once already bound, body=%s", body)
 	}
+	if strings.Contains(body, "The bind token is removed only after the agent is successfully bound. The finalized handle stays visible but immutable here.") {
+		t.Fatalf("did not expect removed finalized-handle hint, body=%s", body)
+	}
 }
 
 func TestHandleIndexAllowsFinalizingTemporaryHandle(t *testing.T) {
