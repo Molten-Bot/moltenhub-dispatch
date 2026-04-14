@@ -636,8 +636,17 @@ func TestHandleIndexShowsBoundProfileState(t *testing.T) {
 	if !strings.Contains(body, `class="panel dispatch-overview brand-login-card-shell"`) {
 		t.Fatalf("expected bound dispatch overview panel, body=%s", body)
 	}
+	if !strings.Contains(body, `id="dispatch-overview"`) {
+		t.Fatalf("expected dispatch overview id for dismiss-once behavior, body=%s", body)
+	}
+	if !strings.Contains(body, `data-auto-dismiss-seconds="30"`) {
+		t.Fatalf("expected dispatch overview to advertise 30s auto-dismiss, body=%s", body)
+	}
 	if !strings.Contains(body, "Queue the right task with fewer clicks.") {
 		t.Fatalf("expected practical dispatch overview heading, body=%s", body)
+	}
+	if !strings.Contains(body, `id="dispatch-overview-close"`) {
+		t.Fatalf("expected dismiss button for dispatch overview, body=%s", body)
 	}
 	if !strings.Contains(body, ">Connected Agents<") || !strings.Contains(body, ">Queued Follow-Ups<") || !strings.Contains(body, ">Recent Events<") {
 		t.Fatalf("expected overview stat labels for dispatch state, body=%s", body)
@@ -776,6 +785,18 @@ func TestHandleIndexShowsBoundProfileState(t *testing.T) {
 	}
 	if !strings.Contains(body, `const dispatchTaskClear = document.getElementById("dispatch-task-clear");`) {
 		t.Fatalf("expected clear button hook in client script, body=%s", body)
+	}
+	if !strings.Contains(body, `const dispatchOverview = document.getElementById("dispatch-overview");`) {
+		t.Fatalf("expected dispatch overview client hook, body=%s", body)
+	}
+	if !strings.Contains(body, `const DISPATCH_OVERVIEW_STORAGE_KEY = "moltenhub.dispatchOverview.dismissed";`) {
+		t.Fatalf("expected dispatch overview dismissal storage key, body=%s", body)
+	}
+	if !strings.Contains(body, `dismissDispatchOverview(true);`) {
+		t.Fatalf("expected dispatch overview dismissal to persist, body=%s", body)
+	}
+	if !strings.Contains(body, `if (readDispatchOverviewDismissed() && hubConnected) {`) {
+		t.Fatalf("expected dispatch overview to stay suppressible only while connected to hub, body=%s", body)
 	}
 	if !strings.Contains(body, `dispatchTaskClear.disabled = busy;`) {
 		t.Fatalf("expected dispatch busy state to disable the clear action, body=%s", body)
@@ -1674,6 +1695,12 @@ func TestHandleStylesEnsuresHiddenModalBackdropsStayHidden(t *testing.T) {
 	}
 	if !strings.Contains(body, `.dispatch-overview {`) {
 		t.Fatalf("expected dispatch overview layout styles, body=%s", body)
+	}
+	if !strings.Contains(body, `.dispatch-overview-close {`) {
+		t.Fatalf("expected dispatch overview dismiss button styles, body=%s", body)
+	}
+	if !strings.Contains(body, `.dispatch-overview-fading {`) {
+		t.Fatalf("expected dispatch overview fade-out styles, body=%s", body)
 	}
 	if !strings.Contains(body, `display: none !important;`) {
 		t.Fatalf("expected explicit hidden display override, body=%s", body)
