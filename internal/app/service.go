@@ -935,7 +935,7 @@ func (s *Service) publishFailureToCaller(ctx context.Context, state AppState, pe
 		ReplyTo:       pending.CallerRequestID,
 		PayloadFormat: "json",
 		Payload:       failurePayload,
-		Error:         report.Error,
+		Error:         explicitFailureMessage(report.Error),
 		ErrorDetail:   failurePayload,
 		OK:            boolPtr(false),
 		Status:        "failed",
