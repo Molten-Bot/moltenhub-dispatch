@@ -21,9 +21,6 @@ type fakeHubClient struct {
 	capabilitiesResponse  map[string]any
 	capabilitiesErr       error
 	capabilitiesErrOnCall int
-	listAgentsCalls       int
-	listAgentsResponse    []hub.HubAgent
-	listAgentsErr         error
 	publishCalls          []hub.PublishRequest
 	offlineCalls          []hub.OfflineRequest
 	baseURLCalls          []string
@@ -81,17 +78,6 @@ func (f *fakeHubClient) GetCapabilities(_ context.Context, _ string) (map[string
 		return f.capabilitiesResponse, nil
 	}
 	return map[string]any{"advertised_skills": []any{}}, nil
-}
-
-func (f *fakeHubClient) ListAgents(_ context.Context, _ string) ([]hub.HubAgent, error) {
-	f.listAgentsCalls++
-	if f.listAgentsErr != nil {
-		return nil, f.listAgentsErr
-	}
-	if f.listAgentsResponse != nil {
-		return f.listAgentsResponse, nil
-	}
-	return nil, nil
 }
 
 func (f *fakeHubClient) PublishOpenClaw(_ context.Context, _ string, req hub.PublishRequest) (hub.PublishResponse, error) {
@@ -3087,32 +3073,36 @@ func TestSetFlashNormalizesInfoLevel(t *testing.T) {
 	}
 }
 
-func TestRefreshConnectedAgentsUsesHubListResponse(t *testing.T) {
+func TestRefreshConnectedAgentsUsesCapabilitiesDirectory(t *testing.T) {
 	t.Parallel()
 
 	service, fake := newTestService(t)
 	ready := true
-	fake.listAgentsResponse = []hub.HubAgent{
-		{
-			AgentUUID: "self-uuid",
-			AgentID:   "self-agent",
-			URI:       "molten://agent/self",
-		},
-		{
-			AgentUUID: "peer-uuid",
-			AgentID:   "peer-agent",
-			Handle:    "peer-agent",
-			URI:       "molten://agent/peer",
-			Status:    "online",
-			Metadata: &hub.AgentMetadata{
-				DisplayName: "Peer Agent",
-				Emoji:       "🛠",
-				Skills: []map[string]any{
-					{"name": "review_failure_logs", "description": "Review logs"},
+	fake.capabilitiesResponse = map[string]any{
+		"result": map[string]any{
+			"connected_agents": []any{
+				map[string]any{
+					"agent_uuid": "self-uuid",
+					"agent_id":   "self-agent",
+					"uri":        "molten://agent/self",
 				},
-				Presence: &hub.AgentPresence{
-					Status: "online",
-					Ready:  &ready,
+				map[string]any{
+					"agent_uuid": "peer-uuid",
+					"agent_id":   "peer-agent",
+					"handle":     "peer-agent",
+					"uri":        "molten://agent/peer",
+					"status":     "online",
+					"metadata": map[string]any{
+						"display_name": "Peer Agent",
+						"emoji":        "🛠",
+						"skills": []map[string]any{
+							{"name": "review_failure_logs", "description": "Review logs"},
+						},
+						"presence": map[string]any{
+							"status": "online",
+							"ready":  ready,
+						},
+					},
 				},
 			},
 		},
@@ -3132,8 +3122,8 @@ func TestRefreshConnectedAgentsUsesHubListResponse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("refresh connected agents: %v", err)
 	}
-	if fake.listAgentsCalls != 1 {
-		t.Fatalf("expected one list-agents call, got %d", fake.listAgentsCalls)
+	if fake.capabilitiesCalls != 1 {
+		t.Fatalf("expected one capabilities call, got %d", fake.capabilitiesCalls)
 	}
 	if len(agents) != 1 {
 		t.Fatalf("expected one connected agent, got %#v", agents)
@@ -3162,11 +3152,39 @@ func TestRefreshConnectedAgentsUsesHubListResponse(t *testing.T) {
 	}
 }
 
-func TestRefreshConnectedAgentsReturnsListEndpointError(t *testing.T) {
+func TestRefreshConnectedAgentsKeepsRememberedAgentsWhenCapabilitiesOmitDirectory(t *testing.T) {
 	t.Parallel()
 
 	service, fake := newTestService(t)
-	fake.listAgentsErr = &hub.APIError{
+	if err := service.store.Update(func(state *AppState) error {
+		state.Session.AgentToken = "agent-token"
+		state.Session.APIBase = "https://na.hub.molten.bot/v1"
+		state.Session.AgentUUID = "self-uuid"
+		state.ConnectedAgents = []ConnectedAgent{
+			testConnectedAgent("remembered-agent", "Remembered Agent", "remembered-uuid", Skill{Name: "run_task"}),
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("seed store: %v", err)
+	}
+
+	agents, err := service.RefreshConnectedAgents(context.Background())
+	if err != nil {
+		t.Fatalf("refresh connected agents: %v", err)
+	}
+	if fake.capabilitiesCalls != 1 {
+		t.Fatalf("expected one capabilities call, got %d", fake.capabilitiesCalls)
+	}
+	if len(agents) != 1 || agents[0].AgentID != "remembered-agent" {
+		t.Fatalf("expected remembered agent to be preserved, got %#v", agents)
+	}
+}
+
+func TestRefreshConnectedAgentsReturnsCapabilitiesEndpointError(t *testing.T) {
+	t.Parallel()
+
+	service, fake := newTestService(t)
+	fake.capabilitiesErr = &hub.APIError{
 		StatusCode: 401,
 		Code:       "unauthorized",
 		Message:    "missing or invalid bearer token",
@@ -3183,11 +3201,14 @@ func TestRefreshConnectedAgentsReturnsListEndpointError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected refresh error")
 	}
-	if !strings.Contains(err.Error(), "/v1/me/agents") {
-		t.Fatalf("expected list-agents route in error, got %v", err)
+	if !strings.Contains(err.Error(), "/v1/agents/me/capabilities") {
+		t.Fatalf("expected capabilities route in error, got %v", err)
 	}
 	if !strings.Contains(err.Error(), "missing or invalid bearer token") {
 		t.Fatalf("expected bearer-token detail in error, got %v", err)
+	}
+	if fake.capabilitiesCalls != 1 {
+		t.Fatalf("expected one capabilities call, got %d", fake.capabilitiesCalls)
 	}
 
 	state := service.store.Snapshot()

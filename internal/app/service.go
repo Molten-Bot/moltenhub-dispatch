@@ -48,7 +48,6 @@ type HubClient interface {
 	BindAgent(ctx context.Context, req hub.BindRequest) (hub.BindResponse, error)
 	UpdateMetadata(ctx context.Context, token string, req hub.UpdateMetadataRequest) (map[string]any, error)
 	GetCapabilities(ctx context.Context, token string) (map[string]any, error)
-	ListAgents(ctx context.Context, token string) ([]hub.HubAgent, error)
 	PublishOpenClaw(ctx context.Context, token string, req hub.PublishRequest) (hub.PublishResponse, error)
 	PullOpenClaw(ctx context.Context, token string, timeout time.Duration) (hub.PullResponse, bool, error)
 	AckOpenClaw(ctx context.Context, token, deliveryID string) error
@@ -427,14 +426,14 @@ func (s *Service) RefreshConnectedAgents(ctx context.Context) ([]ConnectedAgent,
 	}
 	s.syncHubClient(state)
 
-	agents, err := s.hub.ListAgents(ctx, state.Session.AgentToken)
+	capabilities, err := s.hub.GetCapabilities(ctx, state.Session.AgentToken)
 	if err != nil {
 		s.noteHubInteraction(err, ConnectionTransportHTTP)
-		return nil, fmt.Errorf("refresh connected agents from /v1/me/agents: %w", err)
+		return nil, fmt.Errorf("refresh connected agents from %s: %w", connectedAgentsRefreshEndpoint(state.Session), err)
 	}
 	s.noteHubInteraction(nil, ConnectionTransportHTTP)
 
-	agents = connectedAgentsFromHub(agents, state)
+	agents := connectedAgentsFromCapabilities(capabilities, state)
 	if err := s.store.Update(func(current *AppState) error {
 		current.ConnectedAgents = agents
 		return nil
@@ -2117,6 +2116,298 @@ func connectedAgentsFromHub(agents []hub.HubAgent, state AppState) []ConnectedAg
 	return connected
 }
 
+func connectedAgentsRefreshEndpoint(session Session) string {
+	if endpoint := strings.TrimSpace(session.Capabilities); endpoint != "" {
+		return endpoint
+	}
+	return "/v1/agents/me/capabilities"
+}
+
+func connectedAgentsFromCapabilities(capabilities map[string]any, state AppState) []ConnectedAgent {
+	remembered := connectedAgentsFromHub(state.ConnectedAgents, state)
+	discovered := capabilityConnectedAgents(capabilities, state)
+	if len(discovered) == 0 {
+		return remembered
+	}
+
+	merged := make([]ConnectedAgent, 0, len(remembered)+len(discovered))
+	indexByKey := make(map[string]int, len(remembered)+len(discovered))
+	appendAgent := func(agent ConnectedAgent) {
+		agent = normalizeConnectedAgent(agent)
+		key := connectedAgentIdentityKey(agent)
+		if key == "" {
+			return
+		}
+		if idx, ok := indexByKey[key]; ok {
+			merged[idx] = mergeConnectedAgent(merged[idx], agent)
+			return
+		}
+		indexByKey[key] = len(merged)
+		merged = append(merged, agent)
+	}
+
+	for _, agent := range remembered {
+		appendAgent(agent)
+	}
+	for _, agent := range discovered {
+		appendAgent(agent)
+	}
+
+	return merged
+}
+
+func capabilityConnectedAgents(capabilities map[string]any, state AppState) []ConnectedAgent {
+	roots := capabilityConnectedAgentRoots(capabilities)
+	discovered := make([]hub.HubAgent, 0, 8)
+	for _, root := range roots {
+		for _, key := range []string{"connected_agents", "agents", "peers", "available_agents", "reachable_agents"} {
+			for _, entry := range capabilityAgentEntries(root[key]) {
+				agent, ok := connectedAgentFromCapabilityEntry(entry)
+				if !ok {
+					continue
+				}
+				discovered = append(discovered, agent)
+			}
+		}
+	}
+	return connectedAgentsFromHub(discovered, state)
+}
+
+func capabilityConnectedAgentRoots(capabilities map[string]any) []map[string]any {
+	roots := []map[string]any{
+		capabilities,
+		nestedMap(capabilities, "result"),
+	}
+	out := make([]map[string]any, 0, 8)
+	seen := make(map[uintptr]struct{}, 8)
+	appendRoot := func(root map[string]any) {
+		if len(root) == 0 {
+			return
+		}
+		ref := reflect.ValueOf(root).Pointer()
+		if _, ok := seen[ref]; ok {
+			return
+		}
+		seen[ref] = struct{}{}
+		out = append(out, root)
+	}
+
+	for _, root := range roots {
+		appendRoot(root)
+		for _, key := range []string{"directory", "public_directory", "agent_directory"} {
+			appendRoot(nestedMap(root, key))
+		}
+	}
+	return out
+}
+
+func capabilityAgentEntries(value any) []map[string]any {
+	switch typed := value.(type) {
+	case []any:
+		out := make([]map[string]any, 0, len(typed))
+		for _, item := range typed {
+			out = append(out, capabilityAgentEntries(item)...)
+		}
+		return out
+	case []map[string]any:
+		out := make([]map[string]any, 0, len(typed))
+		for _, item := range typed {
+			out = append(out, capabilityAgentEntries(item)...)
+		}
+		return out
+	case map[string]any:
+		if capabilityAgentIdentity(typed) != "" {
+			return []map[string]any{typed}
+		}
+		out := make([]map[string]any, 0, len(typed))
+		for _, nested := range typed {
+			out = append(out, capabilityAgentEntries(nested)...)
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+func capabilityAgentIdentity(entry map[string]any) string {
+	sources := capabilityStringSources(entry)
+	return strings.ToLower(coalesceTrimmed(
+		firstCapabilityString(sources, "agent_uuid", "uuid"),
+		firstCapabilityString(sources, "agent_uri", "uri"),
+		firstCapabilityString(sources, "agent_id", "id"),
+		firstCapabilityString(sources, "handle"),
+	))
+}
+
+func connectedAgentFromCapabilityEntry(entry map[string]any) (ConnectedAgent, bool) {
+	sources := capabilityStringSources(entry)
+	metadata := support.MapByKey(entry, "metadata")
+	agentDetails := nestedMap(entry, "agent")
+	skills := capabilitySkills(entry, metadata, agentDetails)
+	presence := capabilityPresence(entry)
+
+	agent := ConnectedAgent{
+		AgentUUID: firstCapabilityString(sources, "agent_uuid", "uuid"),
+		AgentID:   firstCapabilityString(sources, "agent_id", "id"),
+		URI:       firstCapabilityString(sources, "agent_uri", "uri"),
+		Handle:    firstCapabilityString(sources, "handle"),
+		Status:    firstCapabilityString(sources, "status"),
+	}
+
+	displayName := firstCapabilityString(sources, "display_name", "name")
+	emoji := capabilityEmoji(sources)
+	profileMarkdown := firstCapabilityString(sources, "profile_markdown", "profile", "bio", "description")
+	if displayName != "" || emoji != "" || profileMarkdown != "" || len(skills) > 0 || presence != nil {
+		agent.Metadata = &hub.AgentMetadata{
+			DisplayName:     displayName,
+			Emoji:           emoji,
+			ProfileMarkdown: profileMarkdown,
+			Skills:          skillMetadataFromSkills(skills),
+			Presence:        presence,
+		}
+	}
+
+	agent = normalizeConnectedAgent(agent)
+	return agent, connectedAgentIdentityKey(agent) != ""
+}
+
+func capabilityPresence(entry map[string]any) *hub.AgentPresence {
+	presenceMap := support.MapByKey(entry, "presence")
+	if len(presenceMap) == 0 {
+		return nil
+	}
+
+	presence := &hub.AgentPresence{
+		Status:     stringFromMap(presenceMap, "status"),
+		Transport:  stringFromMap(presenceMap, "transport"),
+		SessionKey: stringFromMap(presenceMap, "session_key", "sessionKey"),
+		UpdatedAt:  stringFromMap(presenceMap, "updated_at", "updatedAt"),
+	}
+	if ready, ok := boolFromAny(presenceMap["ready"]); ok {
+		presence.Ready = &ready
+	}
+	if presence.Status == "" && presence.Transport == "" && presence.SessionKey == "" && presence.UpdatedAt == "" && presence.Ready == nil {
+		return nil
+	}
+	return presence
+}
+
+func mergeConnectedAgent(existing, next ConnectedAgent) ConnectedAgent {
+	existing = normalizeConnectedAgent(existing)
+	next = normalizeConnectedAgent(next)
+
+	if next.AgentUUID == "" {
+		next.AgentUUID = existing.AgentUUID
+	}
+	if next.AgentID == "" {
+		next.AgentID = existing.AgentID
+	}
+	if next.URI == "" {
+		next.URI = existing.URI
+	}
+	if next.Handle == "" {
+		next.Handle = existing.Handle
+	}
+	if next.Status == "" {
+		next.Status = existing.Status
+	}
+	next.Metadata = mergeConnectedAgentMetadata(existing.Metadata, next.Metadata)
+	return normalizeConnectedAgent(next)
+}
+
+func mergeConnectedAgentMetadata(existing, next *hub.AgentMetadata) *hub.AgentMetadata {
+	if next == nil {
+		return cloneConnectedAgentMetadata(existing)
+	}
+	if existing == nil {
+		return cloneConnectedAgentMetadata(next)
+	}
+
+	merged := *next
+	if merged.AgentType == "" {
+		merged.AgentType = existing.AgentType
+	}
+	if merged.DisplayName == "" {
+		merged.DisplayName = existing.DisplayName
+	}
+	if merged.Emoji == "" {
+		merged.Emoji = existing.Emoji
+	}
+	if merged.ProfileMarkdown == "" {
+		merged.ProfileMarkdown = existing.ProfileMarkdown
+	}
+	if len(merged.Activities) == 0 {
+		merged.Activities = append([]any(nil), existing.Activities...)
+	}
+	if len(merged.Skills) == 0 {
+		merged.Skills = append([]map[string]any(nil), existing.Skills...)
+	}
+	if merged.HireMe == nil {
+		merged.HireMe = existing.HireMe
+	}
+	if merged.Public == nil {
+		merged.Public = existing.Public
+	}
+	if merged.LLM == "" {
+		merged.LLM = existing.LLM
+	}
+	if merged.Harness == "" {
+		merged.Harness = existing.Harness
+	}
+	merged.Presence = mergeConnectedAgentPresence(existing.Presence, next.Presence)
+	return &merged
+}
+
+func cloneConnectedAgentMetadata(metadata *hub.AgentMetadata) *hub.AgentMetadata {
+	if metadata == nil {
+		return nil
+	}
+	cloned := *metadata
+	if metadata.Activities != nil {
+		cloned.Activities = append([]any(nil), metadata.Activities...)
+	}
+	if metadata.Skills != nil {
+		cloned.Skills = append([]map[string]any(nil), metadata.Skills...)
+	}
+	if metadata.Presence != nil {
+		presence := *metadata.Presence
+		cloned.Presence = &presence
+	}
+	return &cloned
+}
+
+func mergeConnectedAgentPresence(existing, next *hub.AgentPresence) *hub.AgentPresence {
+	if next == nil {
+		if existing == nil {
+			return nil
+		}
+		presence := *existing
+		return &presence
+	}
+	if existing == nil {
+		presence := *next
+		return &presence
+	}
+
+	merged := *next
+	if merged.Status == "" {
+		merged.Status = existing.Status
+	}
+	if merged.Ready == nil {
+		merged.Ready = existing.Ready
+	}
+	if merged.Transport == "" {
+		merged.Transport = existing.Transport
+	}
+	if merged.SessionKey == "" {
+		merged.SessionKey = existing.SessionKey
+	}
+	if merged.UpdatedAt == "" {
+		merged.UpdatedAt = existing.UpdatedAt
+	}
+	return &merged
+}
+
 type agentIdentity struct {
 	AgentUUID       string
 	AgentURI        string
@@ -2325,6 +2616,26 @@ func skillsFromAny(value any) []Skill {
 	}
 
 	return skills
+}
+
+func skillMetadataFromSkills(skills []Skill) []map[string]any {
+	if len(skills) == 0 {
+		return nil
+	}
+
+	out := make([]map[string]any, 0, len(skills))
+	for _, skill := range skills {
+		name := strings.TrimSpace(skill.Name)
+		if name == "" {
+			continue
+		}
+		entry := map[string]any{"name": name}
+		if description := strings.TrimSpace(skill.Description); description != "" {
+			entry["description"] = description
+		}
+		out = append(out, entry)
+	}
+	return out
 }
 
 func sameAgentRef(session Session, refs ...string) bool {

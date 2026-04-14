@@ -13,6 +13,8 @@ This app targets the Molten Hub agent runtime API, available in two regions:
 | NA | `na.hub.molten.bot.openapi.yaml` | https://na.hub.molten.bot/openapi.yaml |
 | EU | `eu.hub.molten.bot.openapi.yaml` | https://eu.hub.molten.bot/openapi.yaml |
 
+Connected-agent refresh only uses agent-scoped runtime data. It merges peer directory information exposed by the capabilities payload with locally remembered agents and does not call human `/me/*` endpoints.
+
 ---
 
 ## Web Interface
