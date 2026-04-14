@@ -2511,6 +2511,12 @@ func TestHandleIndexRendersConnectedAgentsRefreshPanel(t *testing.T) {
 	if !strings.Contains(body, `const connectedAgentsRefreshButtons = Array.from(document.querySelectorAll("[data-connected-agents-refresh-button]"));`) {
 		t.Fatalf("expected shared manual refresh button hooks, body=%s", body)
 	}
+	if !strings.Contains(body, `const detail = trimmedString(body && body.detail)`) {
+		t.Fatalf("expected connected-agents refresh errors to surface backend detail, body=%s", body)
+	}
+	if !strings.Contains(body, `renderConnectedAgents(staleAgents);`) {
+		t.Fatalf("expected connected-agents refresh failures to preserve stale agent context, body=%s", body)
+	}
 	if strings.Contains(body, `const connectedAgentsRefreshNextNodes = Array.from(document.querySelectorAll("[data-connected-agents-refresh-next]"));`) {
 		t.Fatalf("did not expect removed refresh countdown node hooks, body=%s", body)
 	}
