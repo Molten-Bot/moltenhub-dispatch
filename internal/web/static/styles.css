@@ -4283,6 +4283,10 @@ body.settings-modal-open {
   font-size: 0.8rem;
 }
 
+#dispatch-submit-status:empty {
+  display: none;
+}
+
 .connected-agents-refresh-status.is-error {
   color: var(--bad);
 }
@@ -5101,7 +5105,7 @@ legend {
 }
 
 .manual-dispatch-actions {
-  margin-top: 4px;
+  margin-top: 0;
 }
 
 .shell input:not([type="radio"]):not([type="checkbox"]),

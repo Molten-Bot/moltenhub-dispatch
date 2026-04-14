@@ -725,6 +725,11 @@ func TestHandleIndexShowsBoundProfileState(t *testing.T) {
 	if !strings.Contains(body, `class="manual-dispatch-actions"`) {
 		t.Fatalf("expected manual dispatch submit action wrapper, body=%s", body)
 	}
+	statusIndex := strings.Index(body, `id="dispatch-submit-status"`)
+	actionsIndex := strings.Index(body, `class="manual-dispatch-actions"`)
+	if statusIndex == -1 || actionsIndex == -1 || statusIndex > actionsIndex {
+		t.Fatalf("expected dispatch status to render before the action row so buttons sit at the footer, body=%s", body)
+	}
 	if !strings.Contains(body, `id="dispatch-task-clear"`) {
 		t.Fatalf("expected manual dispatch clear button beside submit, body=%s", body)
 	}
@@ -1666,6 +1671,9 @@ func TestHandleStylesEnsuresHiddenModalBackdropsStayHidden(t *testing.T) {
 	}
 	if !strings.Contains(body, `.manual-dispatch-actions {`) || !strings.Contains(body, `justify-content: flex-end;`) {
 		t.Fatalf("expected manual dispatch submit actions to right-align, body=%s", body)
+	}
+	if !strings.Contains(body, `#dispatch-submit-status:empty {`) {
+		t.Fatalf("expected empty dispatch submit status to collapse so the footer buttons stay flush, body=%s", body)
 	}
 	if !strings.Contains(body, `gap: 10px;`) {
 		t.Fatalf("expected spacing between clear and dispatch actions, body=%s", body)

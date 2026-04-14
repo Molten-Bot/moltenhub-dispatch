@@ -1435,7 +1435,7 @@ func failureFromMessage(message hub.OpenClawMessage) failureReport {
 	if report.Error == "" {
 		report.Error = payloadFailureError(payloadMap, message.Payload)
 	}
-	if detail, ok := payloadMap["error_detail"]; ok && detail != nil {
+	if detail := firstMapValue(payloadMap, "error_detail", "error_details"); detail != nil {
 		report.Detail = detail
 	}
 	if report.Error == "" {
@@ -1503,6 +1503,9 @@ func payloadFailureError(payloadMap map[string]any, payload any) string {
 	if value := stringFromMap(payloadMap, "error", "error_message", "stderr", "detail", "output"); value != "" {
 		return value
 	}
+	if value := failureErrorString(firstMapValue(payloadMap, "error_detail", "error_details")); value != "" {
+		return value
+	}
 	if value, ok := payload.(string); ok {
 		trimmed := strings.TrimSpace(value)
 		if trimmed == "" {
@@ -1512,6 +1515,17 @@ func payloadFailureError(payloadMap map[string]any, payload any) string {
 		return strings.TrimSpace(firstLine)
 	}
 	return ""
+}
+
+func failureErrorString(detail any) string {
+	switch typed := detail.(type) {
+	case string:
+		return strings.TrimSpace(typed)
+	case map[string]any:
+		return stringFromMap(typed, "error", "message", "stderr", "detail", "output")
+	default:
+		return ""
+	}
 }
 
 func failureDetailIsEmpty(detail any) bool {
@@ -1581,7 +1595,7 @@ func payloadMapIndicatesFailure(payload map[string]any) bool {
 			return true
 		}
 	}
-	if detail, ok := payload["error_detail"]; ok && !failureDetailIsEmpty(detail) {
+	if detail := firstMapValue(payload, "error_detail", "error_details"); !failureDetailIsEmpty(detail) {
 		return true
 	}
 	if nested, ok := payload["failure"].(map[string]any); ok {
