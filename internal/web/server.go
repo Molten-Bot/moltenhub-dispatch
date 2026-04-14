@@ -11,6 +11,7 @@ import (
 	"io/fs"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -21,6 +22,8 @@ import (
 
 //go:embed templates/index.html static
 var assets embed.FS
+
+var canonicalUUIDPattern = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
 type service interface {
 	Snapshot() app.AppState
@@ -56,6 +59,12 @@ func New(service service) (*Server, error) {
 			}
 			return string(data)
 		},
+		"connectedAgentDisplayName":    connectedAgentDisplayName,
+		"connectedAgentSecondaryLabel": connectedAgentSecondaryLabel,
+		"connectedAgentPresenceStatus": connectedAgentPresenceStatus,
+		"connectedAgentPresenceLabel":  connectedAgentPresenceLabel,
+		"connectedAgentEmoji":          connectedAgentEmoji,
+		"connectedAgentSkills":         connectedAgentSkills,
 	}).ParseFS(assets, "templates/index.html")
 	if err != nil {
 		return nil, fmt.Errorf("parse templates: %w", err)
@@ -576,6 +585,163 @@ func skillsToMetadata(skills []app.Skill) []map[string]any {
 		out = append(out, entry)
 	}
 	return out
+}
+
+func connectedAgentDisplayName(agent app.ConnectedAgent) string {
+	displayName := ""
+	if agent.Metadata != nil {
+		displayName = agent.Metadata.DisplayName
+	}
+	for _, candidate := range []string{
+		displayName,
+		agent.Handle,
+		agent.AgentID,
+		agent.URI,
+	} {
+		if label := visibleAgentLabel(candidate); label != "" {
+			return label
+		}
+	}
+	return "Connected agent"
+}
+
+func connectedAgentSecondaryLabel(agent app.ConnectedAgent) string {
+	for _, candidate := range []string{agent.AgentID, agent.Handle, agent.URI} {
+		if label := visibleAgentLabel(candidate); label != "" {
+			return label
+		}
+	}
+	return ""
+}
+
+func connectedAgentPresenceStatus(agent app.ConnectedAgent) string {
+	if agent.Metadata != nil && agent.Metadata.Presence != nil && strings.EqualFold(strings.TrimSpace(agent.Metadata.Presence.Status), "online") {
+		return "online"
+	}
+	if strings.EqualFold(strings.TrimSpace(agent.Status), "online") {
+		return "online"
+	}
+	return "offline"
+}
+
+func connectedAgentPresenceLabel(agent app.ConnectedAgent) string {
+	if connectedAgentPresenceStatus(agent) == "online" {
+		return "Online"
+	}
+	return "Offline"
+}
+
+func connectedAgentEmoji(agent app.ConnectedAgent) string {
+	if agent.Metadata != nil {
+		if emoji := strings.TrimSpace(agent.Metadata.Emoji); emoji != "" {
+			return emoji
+		}
+	}
+	return "🤖"
+}
+
+func connectedAgentSkills(agent app.ConnectedAgent) []app.Skill {
+	rawSkills := make([]any, 0, 4)
+	if agent.Metadata != nil {
+		rawSkills = append(rawSkills, agent.Metadata.Skills, agent.Metadata.AdvertisedSkills)
+	}
+	rawSkills = append(rawSkills, agent.Skills, agent.AdvertisedSkills)
+	for _, raw := range rawSkills {
+		if skills := skillSliceFromAny(raw); len(skills) > 0 {
+			return skills
+		}
+	}
+	return nil
+}
+
+func skillSliceFromAny(value any) []app.Skill {
+	switch typed := value.(type) {
+	case []app.Skill:
+		out := make([]app.Skill, 0, len(typed))
+		seen := make(map[string]struct{}, len(typed))
+		for _, entry := range typed {
+			name := strings.TrimSpace(entry.Name)
+			if name == "" {
+				continue
+			}
+			key := strings.ToLower(name)
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			out = append(out, app.Skill{
+				Name:        name,
+				Description: strings.TrimSpace(entry.Description),
+			})
+		}
+		return out
+	case []map[string]any:
+		out := make([]app.Skill, 0, len(typed))
+		seen := make(map[string]struct{}, len(typed))
+		for _, entry := range typed {
+			name := strings.TrimSpace(support.StringFromMap(entry, "name"))
+			if name == "" {
+				continue
+			}
+			key := strings.ToLower(name)
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			out = append(out, app.Skill{
+				Name:        name,
+				Description: strings.TrimSpace(support.StringFromMap(entry, "description")),
+			})
+		}
+		return out
+	case []any:
+		out := make([]app.Skill, 0, len(typed))
+		seen := make(map[string]struct{}, len(typed))
+		for _, entry := range typed {
+			switch item := entry.(type) {
+			case string:
+				name := strings.TrimSpace(item)
+				if name == "" {
+					continue
+				}
+				key := strings.ToLower(name)
+				if _, ok := seen[key]; ok {
+					continue
+				}
+				seen[key] = struct{}{}
+				out = append(out, app.Skill{Name: name})
+			case map[string]any:
+				name := strings.TrimSpace(support.StringFromMap(item, "name"))
+				if name == "" {
+					continue
+				}
+				key := strings.ToLower(name)
+				if _, ok := seen[key]; ok {
+					continue
+				}
+				seen[key] = struct{}{}
+				out = append(out, app.Skill{
+					Name:        name,
+					Description: strings.TrimSpace(support.StringFromMap(item, "description")),
+				})
+			}
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+func visibleAgentLabel(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" || looksLikeUUID(value) {
+		return ""
+	}
+	return value
+}
+
+func looksLikeUUID(value string) bool {
+	return canonicalUUIDPattern.MatchString(strings.TrimSpace(value))
 }
 
 type pageData struct {
