@@ -3211,6 +3211,71 @@ func TestRefreshConnectedAgentsAcceptsPeerCatalogSkillFields(t *testing.T) {
 	}
 }
 
+func TestRefreshConnectedAgentsAcceptsHubProfileFieldsAtAgentRoot(t *testing.T) {
+	t.Parallel()
+
+	service, fake := newTestService(t)
+	ready := true
+	fake.capabilitiesResponse = map[string]any{
+		"peer_skill_catalog": []any{
+			map[string]any{
+				"agent_uuid": "self-uuid",
+				"agent_id":   "self-agent",
+				"uri":        "molten://agent/self",
+			},
+			map[string]any{
+				"agent_uuid":   "peer-uuid",
+				"agent_id":     "peer-agent",
+				"handle":       "peer-agent",
+				"uri":          "molten://agent/peer",
+				"display_name": "Peer Agent",
+				"emoji":        "🛠",
+				"presence": map[string]any{
+					"status": "online",
+					"ready":  ready,
+				},
+				"skills": []map[string]any{
+					{"name": "review_failure_logs", "description": "Review logs"},
+				},
+			},
+		},
+	}
+	if err := service.store.Update(func(state *AppState) error {
+		state.Session.AgentToken = "agent-token"
+		state.Session.APIBase = "https://na.hub.molten.bot/v1"
+		state.Session.AgentUUID = "self-uuid"
+		state.Session.AgentURI = "molten://agent/self"
+		state.Session.Handle = "self-agent"
+		return nil
+	}); err != nil {
+		t.Fatalf("seed store: %v", err)
+	}
+
+	agents, err := service.RefreshConnectedAgents(context.Background())
+	if err != nil {
+		t.Fatalf("refresh connected agents: %v", err)
+	}
+	if len(agents) != 1 {
+		t.Fatalf("expected one connected agent, got %#v", agents)
+	}
+	agent := agents[0]
+	if agent.Metadata == nil {
+		t.Fatalf("expected metadata synthesized from root capability fields, got %#v", agent)
+	}
+	if got, want := connectedAgentDisplayName(agent), "Peer Agent"; got != want {
+		t.Fatalf("display name = %q, want %q", got, want)
+	}
+	if got, want := connectedAgentEmoji(agent), "🛠"; got != want {
+		t.Fatalf("emoji = %q, want %q", got, want)
+	}
+	if got, want := connectedAgentPresenceStatus(agent), "online"; got != want {
+		t.Fatalf("presence = %q, want %q", got, want)
+	}
+	if skills := connectedAgentSkills(agent); len(skills) != 1 || skills[0].Name != "review_failure_logs" {
+		t.Fatalf("expected root-level skills from capabilities response, got %#v", skills)
+	}
+}
+
 func TestRefreshConnectedAgentsReturnsCapabilitiesEndpointError(t *testing.T) {
 	t.Parallel()
 
