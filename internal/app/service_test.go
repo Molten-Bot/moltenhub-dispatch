@@ -2098,6 +2098,26 @@ func TestFailureFromMessageUsesDownstreamFailureEnvelope(t *testing.T) {
 	}
 }
 
+func TestFailureFromMessageUsesErrorDetailsAlias(t *testing.T) {
+	t.Parallel()
+
+	report := failureFromMessage(hub.OpenClawMessage{
+		Type: "skill_result",
+		Payload: map[string]any{
+			"status":        "failed",
+			"error_details": map[string]any{"stderr": "panic: boom"},
+		},
+	})
+
+	if report.Error != "panic: boom" {
+		t.Fatalf("unexpected failure error: %q", report.Error)
+	}
+	detail, ok := report.Detail.(map[string]any)
+	if !ok || detail["stderr"] != "panic: boom" {
+		t.Fatalf("unexpected failure detail: %#v", report.Detail)
+	}
+}
+
 func TestCallerFailurePayloadIncludesExplicitFailureDetails(t *testing.T) {
 	t.Parallel()
 
@@ -2163,6 +2183,21 @@ func TestMessageSucceededTreatsNonZeroExitCodePayloadAsFailure(t *testing.T) {
 
 	if messageSucceeded(message) {
 		t.Fatalf("expected non-zero exit code payload to be treated as failure: %#v", message)
+	}
+}
+
+func TestMessageSucceededTreatsErrorDetailsAliasPayloadAsFailure(t *testing.T) {
+	t.Parallel()
+
+	message := hub.OpenClawMessage{
+		Type: "skill_result",
+		Payload: map[string]any{
+			"error_details": map[string]any{"stderr": "panic: boom"},
+		},
+	}
+
+	if messageSucceeded(message) {
+		t.Fatalf("expected error_details payload to be treated as failure: %#v", message)
 	}
 }
 
