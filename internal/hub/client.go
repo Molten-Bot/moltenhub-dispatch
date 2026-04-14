@@ -277,13 +277,17 @@ func (c *Client) PullOpenClaw(ctx context.Context, token string, timeout time.Du
 	}
 
 	envelope := struct {
-		OK     bool         `json:"ok"`
-		Result PullResponse `json:"result"`
+		OK     bool            `json:"ok"`
+		Result json.RawMessage `json:"result"`
 	}{}
 	if err := json.NewDecoder(resp.Body).Decode(&envelope); err != nil {
 		return PullResponse{}, false, fmt.Errorf("decode pull response: %w", err)
 	}
-	return envelope.Result, true, nil
+	result, err := decodePullResponsePayload(envelope.Result, "pull response")
+	if err != nil {
+		return PullResponse{}, false, err
+	}
+	return result, true, nil
 }
 
 func (c *Client) AckOpenClaw(ctx context.Context, token, deliveryID string) error {

@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -317,13 +316,13 @@ func normalizeSessionAliases(session *Session) {
 	session.AgentToken = coalesceTrimmed(session.AgentToken, session.BindToken)
 	session.BindToken = coalesceTrimmed(session.BindToken, session.AgentToken)
 	session.HubURL = normalizeHubRuntimeURL(session.HubURL)
-
-	session.ManifestURL = NormalizeHubEndpointURL(session.ManifestURL)
-	session.MetadataURL = NormalizeHubEndpointURL(session.MetadataURL)
-	session.Capabilities = NormalizeHubEndpointURL(session.Capabilities)
-	session.OpenClawPullURL = NormalizeHubEndpointURL(session.OpenClawPullURL)
-	session.OpenClawPushURL = NormalizeHubEndpointURL(session.OpenClawPushURL)
-	session.OfflineURL = NormalizeHubEndpointURL(session.OfflineURL)
+	runtimeEndpoints := sanitizeRuntimeEndpoints(runtimeEndpointsFromSession(*session))
+	session.ManifestURL = runtimeEndpoints.ManifestURL
+	session.MetadataURL = runtimeEndpoints.MetadataURL
+	session.Capabilities = runtimeEndpoints.CapabilitiesURL
+	session.OpenClawPullURL = runtimeEndpoints.OpenClawPullURL
+	session.OpenClawPushURL = runtimeEndpoints.OpenClawPushURL
+	session.OfflineURL = runtimeEndpoints.OpenClawOfflineURL
 
 	session.APIBase = NormalizeHubEndpointURL(coalesceTrimmed(session.APIBase, session.BaseURL))
 	if session.APIBase == "" {
@@ -336,24 +335,7 @@ func normalizeConnectionAliases(connection *ConnectionState, session Session, se
 	if connection == nil {
 		return
 	}
-	connection.BaseURL = NormalizeHubEndpointURL(connection.BaseURL)
-	if connection.BaseURL == "" {
-		connection.BaseURL = coalesceTrimmed(
-			NormalizeHubEndpointURL(session.APIBase),
-			NormalizeHubEndpointURL(settings.HubURL),
-		)
-	}
-	if connection.BaseURL == "" {
-		connection.Domain = ""
-		return
-	}
-
-	parsed, err := url.Parse(connection.BaseURL)
-	if err != nil || strings.TrimSpace(parsed.Hostname()) == "" {
-		connection.Domain = ""
-		return
-	}
-	connection.Domain = strings.TrimSpace(strings.ToLower(parsed.Hostname()))
+	connection.BaseURL, connection.Domain = hubConnectionTarget(connection.BaseURL, coalesceTrimmed(session.APIBase, settings.HubURL))
 }
 
 func normalizeFlash(flash *FlashMessage) {
