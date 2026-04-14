@@ -1092,6 +1092,9 @@ func TestHandleDispatchResolutionFailureSendsDetailedFailureWithoutFollowUp(t *t
 	if failurePayload["next_action"] != "" {
 		t.Fatalf("expected empty next_action, got %#v", failurePayload["next_action"])
 	}
+	if got := fake.publishCalls[0].Message.Error; got != "Task failed: no connected agent matched \"missing-agent\"" {
+		t.Fatalf("expected explicit caller failure error, got %q", got)
+	}
 	if got := fake.publishCalls[0].Message.ErrorDetail.(map[string]any)["message"]; got != "Task dispatch failed before it reached a connected agent." {
 		t.Fatalf("unexpected caller error detail payload: %#v", fake.publishCalls[0].Message.ErrorDetail)
 	}
@@ -1176,8 +1179,8 @@ func TestHandleDownstreamFailureSendsDetailedFailureWithoutFollowUp(t *testing.T
 	if failureMessage.Type != "skill_result" {
 		t.Fatalf("unexpected caller message type: %s", failureMessage.Type)
 	}
-	if failureMessage.Error == "" {
-		t.Fatal("expected detailed failure error")
+	if !strings.Contains(strings.ToLower(failureMessage.Error), "failed") {
+		t.Fatalf("expected failure error to explicitly state failure, got %q", failureMessage.Error)
 	}
 	failurePayload, ok := failureMessage.Payload.(map[string]any)
 	if !ok {
@@ -1407,6 +1410,9 @@ func TestHandleDownstreamPlaintextRunnerFailureReturnsErrorDetailsWithoutFollowU
 	}
 	if got := failurePayload["failure"]; got != true {
 		t.Fatalf("expected failure marker in caller payload, got %#v", got)
+	}
+	if got := fake.publishCalls[0].Message.Error; got != "Task failed: error connecting to api.github.com" {
+		t.Fatalf("expected explicit failure error, got %q", got)
 	}
 	failureDetail, ok := failurePayload["error_detail"].(string)
 	if !ok || !strings.Contains(failureDetail, "githubstatus.com") {
