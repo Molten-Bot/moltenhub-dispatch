@@ -2060,6 +2060,9 @@ func TestHandleIndexRendersCompletedOnboardingFlowForBoundSession(t *testing.T) 
 	if !strings.Contains(body, "Edit Agent Profile") {
 		t.Fatalf("expected profile editor once already bound, body=%s", body)
 	}
+	if strings.Contains(body, "The bind token is removed only after the agent is successfully bound. The finalized handle stays visible but immutable here.") {
+		t.Fatalf("did not expect removed finalized-handle hint, body=%s", body)
+	}
 }
 
 func TestHandleIndexAllowsFinalizingTemporaryHandle(t *testing.T) {
@@ -2477,6 +2480,9 @@ func TestHandleIndexRendersConnectedAgentsRefreshPanel(t *testing.T) {
 	}
 	if !strings.Contains(body, `id="manual-dispatch-targets"`) {
 		t.Fatalf("expected manual dispatch connected agent target list, body=%s", body)
+	}
+	if strings.Contains(body, "Pick the worker that should receive this task. Dispatch keeps the selection synced when the connected-agent list refreshes.") {
+		t.Fatalf("did not expect removed manual dispatch helper copy, body=%s", body)
 	}
 	if strings.Contains(body, "Choose one of the connected agents below.") {
 		t.Fatalf("did not expect removed connected-agent hint copy, body=%s", body)
