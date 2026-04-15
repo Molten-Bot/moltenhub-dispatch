@@ -892,6 +892,75 @@ func TestHandleDispatchAcceptsMinimalTargetOnlyForm(t *testing.T) {
 	}
 }
 
+func TestHandleIndexIncludesSkillSchemaPlaceholderSupport(t *testing.T) {
+	t.Parallel()
+
+	stub := &stubService{
+		state: app.AppState{
+			Session: app.Session{
+				AgentToken:      "agent-token",
+				Handle:          "codex-beast",
+				HandleFinalized: true,
+				DisplayName:     "Dispatch Agent",
+				BoundAt:         time.Now().UTC(),
+			},
+			ConnectedAgents: []app.ConnectedAgent{
+				{
+					AgentID:   "worker-a",
+					Handle:    "worker-a",
+					AgentUUID: "worker-uuid",
+					URI:       "molten://agent/worker-a",
+					Metadata: &hub.AgentMetadata{
+						DisplayName: "Worker A",
+						Skills: []map[string]any{
+							{
+								"name":        "run_task",
+								"description": "Run task with structured payload.",
+								"schema": map[string]any{
+									"type": "object",
+									"required": []any{"repo", "prompt"},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	server, err := New(stub)
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, `const skillPayloadHint = document.getElementById("skill-payload-hint");`) {
+		t.Fatalf("expected payload hint hook for schema-aware placeholder copy, body=%s", body)
+	}
+	if !strings.Contains(body, `const defaultSkillPayloadHint = skillPayloadHint instanceof HTMLElement`) {
+		t.Fatalf("expected default payload hint capture before schema overrides, body=%s", body)
+	}
+	if !strings.Contains(body, `const extractSkillSchema = (skill) => {`) {
+		t.Fatalf("expected skill schema extraction helper in client script, body=%s", body)
+	}
+	if !strings.Contains(body, `for (const key of ["schema", "input_schema", "payload_schema", "inputSchema", "payloadSchema", "parameters", "args_schema", "argsSchema"])`) {
+		t.Fatalf("expected schema alias scan in client script, body=%s", body)
+	}
+	if !strings.Contains(body, `schemaText: trimmedString(schemaText),`) {
+		t.Fatalf("expected skill entries to preserve schema text for placeholders, body=%s", body)
+	}
+	if !strings.Contains(body, `Required payload schema shown as placeholder. Markdown and JSON are both supported.`) {
+		t.Fatalf("expected schema-specific payload hint copy, body=%s", body)
+	}
+	if !strings.Contains(body, `skillPayloadInput.placeholder = skillEntry && skillEntry.schemaText`) {
+		t.Fatalf("expected payload placeholder to switch to selected skill schema, body=%s", body)
+	}
+}
+
 func TestHandleDispatchAPIAcceptsMinimalTargetOnlyForm(t *testing.T) {
 	t.Parallel()
 

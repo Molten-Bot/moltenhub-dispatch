@@ -560,12 +560,16 @@
       const skillNameHint = document.getElementById("skill-name-hint");
       const skillPayloadField = document.getElementById("skill-payload-field");
       const skillPayloadInput = document.getElementById("skill-payload-input");
+      const skillPayloadHint = document.getElementById("skill-payload-hint");
       const skillPayloadValidation = document.getElementById("skill-payload-validation");
       const skillPayloadFormatInput = document.getElementById("skill-payload-format-input");
       const trimmedString = (value) => String(value || "").trim();
       const defaultSkillPayloadPlaceholder = skillPayloadInput instanceof HTMLTextAreaElement
         ? trimmedString(skillPayloadInput.getAttribute("data-default-placeholder")) || "Describe the task or paste a JSON payload."
         : "Describe the task or paste a JSON payload.";
+      const defaultSkillPayloadHint = skillPayloadHint instanceof HTMLElement
+        ? trimmedString(skillPayloadHint.textContent) || "Markdown and JSON are both supported."
+        : "Markdown and JSON are both supported.";
       const dispatchTaskClear = document.getElementById("dispatch-task-clear");
       const dispatchTaskSubmit = document.getElementById("dispatch-task-submit");
       const dispatchSubmitStatus = document.getElementById("dispatch-submit-status");
@@ -1843,20 +1847,60 @@
 
       const connectedAgentSkillEntries = (agent) => {
         const ordered = [];
-        const seen = new Set();
-        const pushSkill = (name, description = "", isDefault = false) => {
+        const seen = new Map();
+        const formatSkillSchemaPlaceholder = (schema) => {
+          if (schema == null) {
+            return "";
+          }
+          if (typeof schema === "string") {
+            return trimmedString(schema);
+          }
+          if (typeof schema === "object") {
+            try {
+              return JSON.stringify(schema, null, 2);
+            } catch (_error) {
+              return "";
+            }
+          }
+          return trimmedString(schema);
+        };
+        const extractSkillSchema = (skill) => {
+          if (!skill || typeof skill !== "object") {
+            return "";
+          }
+          for (const key of ["schema", "input_schema", "payload_schema", "inputSchema", "payloadSchema", "parameters", "args_schema", "argsSchema"]) {
+            const schemaText = formatSkillSchemaPlaceholder(skill[key]);
+            if (schemaText !== "") {
+              return schemaText;
+            }
+          }
+          return "";
+        };
+        const pushSkill = (name, description = "", isDefault = false, schemaText = "") => {
           const skillName = trimmedString(name);
           if (!skillName) {
             return;
           }
           const key = skillName.toLowerCase();
-          if (seen.has(key)) {
+          const existingIndex = seen.get(key);
+          if (existingIndex !== undefined) {
+            const existing = ordered[existingIndex];
+            if (existing && existing.description === "" && trimmedString(description) !== "") {
+              existing.description = trimmedString(description);
+            }
+            if (existing && existing.schemaText === "" && trimmedString(schemaText) !== "") {
+              existing.schemaText = trimmedString(schemaText);
+            }
+            if (existing && isDefault) {
+              existing.isDefault = true;
+            }
             return;
           }
-          seen.add(key);
+          seen.set(key, ordered.length);
           ordered.push({
             name: skillName,
             description: trimmedString(description),
+            schemaText: trimmedString(schemaText),
             isDefault,
           });
         };
@@ -1872,7 +1916,7 @@
           }
           advertisedSkills.forEach((skill) => {
             if (skill && typeof skill === "object") {
-              pushSkill(skill.name, skill.description);
+              pushSkill(skill.name, skill.description, false, extractSkillSchema(skill));
               return;
             }
             pushSkill(skill);
@@ -1981,6 +2025,14 @@
         skillPayloadValidation.classList.toggle("is-error", isError);
       };
 
+      const selectedSkillEntry = () => {
+        const dispatchState = resolveSelectedDispatchState();
+        if (!dispatchState.selectedAgent || dispatchState.skillName === "") {
+          return null;
+        }
+        return connectedAgentSkillEntries(dispatchState.selectedAgent).find((skill) => skill.name === dispatchState.skillName) || null;
+      };
+
       const detectSkillPayloadFormat = (value) => {
         const rawPayload = trimmedString(value);
         if (rawPayload === "") {
@@ -2036,15 +2088,24 @@
           return;
         }
         const selectedSkill = hasSelectedSkill();
+        const skillEntry = selectedSkill ? selectedSkillEntry() : null;
         skillPayloadField.hidden = !selectedSkill;
         if (skillPayloadInput instanceof HTMLTextAreaElement) {
           skillPayloadInput.disabled = !selectedSkill;
           if (!selectedSkill) {
             skillPayloadInput.value = "";
             skillPayloadInput.setCustomValidity("");
-          } else {
             skillPayloadInput.placeholder = defaultSkillPayloadPlaceholder;
+          } else {
+            skillPayloadInput.placeholder = skillEntry && skillEntry.schemaText
+              ? skillEntry.schemaText
+              : defaultSkillPayloadPlaceholder;
           }
+        }
+        if (skillPayloadHint instanceof HTMLElement) {
+          skillPayloadHint.textContent = skillEntry && skillEntry.schemaText
+            ? "Required payload schema shown as placeholder. Markdown and JSON are both supported."
+            : defaultSkillPayloadHint;
         }
         if (skillPayloadFormatInput instanceof HTMLInputElement && !selectedSkill) {
           skillPayloadFormatInput.value = "";
