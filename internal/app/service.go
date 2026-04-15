@@ -551,9 +551,12 @@ func (s *Service) RunHubLoop(ctx context.Context) {
 		if realtime, ok := s.hub.(realtimeHubClient); ok {
 			session, err := realtime.ConnectOpenClaw(ctx, state.Session.AgentToken, state.Settings.SessionKey)
 			if err == nil {
-				if err := s.syncPresenceTransport(ctx, ConnectionTransportWebSocket); err != nil {
+				if err := s.ensurePresenceOnline(ctx, ConnectionTransportWebSocket); err != nil {
 					_ = session.Close()
-					if ctx.Err() != nil || isUnauthorizedHubError(err) {
+					if ctx.Err() != nil {
+						return
+					}
+					if isUnauthorizedHubError(err) {
 						return
 					}
 					if !sleepWithContext(ctx, s.pollInterval()) {
@@ -574,8 +577,11 @@ func (s *Service) RunHubLoop(ctx context.Context) {
 				}
 			}
 			s.noteRealtimeFallback(err)
-			if err := s.syncPresenceTransport(ctx, ConnectionTransportHTTPLong); err != nil {
-				if ctx.Err() != nil || isUnauthorizedHubError(err) {
+			if err := s.ensurePresenceOnline(ctx, ConnectionTransportHTTPLong); err != nil {
+				if ctx.Err() != nil {
+					return
+				}
+				if isUnauthorizedHubError(err) {
 					return
 				}
 				if !sleepWithContext(ctx, s.pollInterval()) {
@@ -589,8 +595,11 @@ func (s *Service) RunHubLoop(ctx context.Context) {
 			continue
 		}
 
-		if err := s.syncPresenceTransport(ctx, ConnectionTransportHTTPLong); err != nil {
-			if ctx.Err() != nil || isUnauthorizedHubError(err) {
+		if err := s.ensurePresenceOnline(ctx, ConnectionTransportHTTPLong); err != nil {
+			if ctx.Err() != nil {
+				return
+			}
+			if isUnauthorizedHubError(err) {
 				return
 			}
 			if !sleepWithContext(ctx, s.pollInterval()) {
@@ -794,24 +803,33 @@ func (s *Service) MarkOnline(ctx context.Context, transport string) error {
 	if strings.TrimSpace(state.Session.AgentToken) == "" {
 		return nil
 	}
+	normalizedTransport := normalizePresenceTransport(transport)
 	s.syncHubClient(state)
 	profile := AgentProfile{
 		DisplayName:     state.Session.DisplayName,
 		Emoji:           state.Session.Emoji,
 		ProfileMarkdown: state.Session.ProfileBio,
 	}
-	transport = normalizePresenceTransport(transport)
+	normalizedTransport := normalizePresenceTransport(transport)
 	_, err := s.hub.UpdateMetadata(ctx, state.Session.AgentToken, hub.UpdateMetadataRequest{
-		Metadata: buildAgentMetadata(profile, state.Settings.SessionKey, transport),
+		Metadata: buildAgentMetadata(profile, state.Settings.SessionKey, normalizedTransport),
 	})
 	if err != nil {
-		s.noteHubInteraction(err, transport)
+		s.noteHubInteraction(err, normalizedTransport)
 		return err
 	}
-	s.noteHubInteraction(nil, transport)
+	s.noteHubInteraction(nil, normalizedTransport)
 	s.presenceSynced = true
-	s.presenceTransport = transport
+	s.presenceTransport = normalizedTransport
 	return nil
+}
+
+func (s *Service) ensurePresenceOnline(ctx context.Context, transport string) error {
+	normalizedTransport := normalizePresenceTransport(transport)
+	if s.presenceSynced && s.presenceTransport == normalizedTransport {
+		return nil
+	}
+	return s.MarkOnline(ctx, normalizedTransport)
 }
 
 func (s *Service) handleInboundMessage(ctx context.Context, message hub.PullResponse) error {
