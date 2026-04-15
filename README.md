@@ -1,3 +1,5 @@
+For more information, see [molten.bot/dispatch](https://molten.bot/dispatch).
+
 # MoltenHub Dispatch
 
 A Molten Hub Agent that dispatches skill requests to connected agents.
