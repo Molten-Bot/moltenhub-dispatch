@@ -1091,6 +1091,9 @@ func TestHandleDispatchResolutionFailureSendsDetailedFailureWithoutFollowUp(t *t
 	if failurePayload["error"] != "no connected agent matched \"missing-agent\"" {
 		t.Fatalf("unexpected caller error: %#v", failurePayload["error"])
 	}
+	if failurePayload["detail"] != "no connected agent matched \"missing-agent\"" {
+		t.Fatalf("unexpected caller detail: %#v", failurePayload["detail"])
+	}
 	if failurePayload["retryable"] != false {
 		t.Fatalf("expected retryable=false, got %#v", failurePayload["retryable"])
 	}
@@ -1426,6 +1429,9 @@ func TestHandleDownstreamPlaintextRunnerFailureReturnsErrorDetailsWithoutFollowU
 	}
 	if errorDetails, ok := failurePayload["error_details"].(string); !ok || !strings.Contains(errorDetails, "githubstatus.com") {
 		t.Fatalf("expected caller error_details to include network diagnostic, got %#v", failurePayload["error_details"])
+	}
+	if detail, ok := failurePayload["detail"].(string); !ok || !strings.Contains(detail, "githubstatus.com") {
+		t.Fatalf("expected caller detail to include network diagnostic, got %#v", failurePayload["detail"])
 	}
 	if detail, ok := fake.publishCalls[0].Message.ErrorDetail.(string); !ok || !strings.Contains(detail, "githubstatus.com") {
 		t.Fatalf("expected caller top-level error detail to include network diagnostic, got %#v", fake.publishCalls[0].Message.ErrorDetail)

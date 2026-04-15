@@ -1543,6 +1543,7 @@ func failureFields(report failureReport, message string, detail any) map[string]
 		"status":       "failed",
 		"message":      message,
 		"error":        report.Error,
+		"detail":       detail,
 		"retryable":    report.Retryable,
 		"next_action":  report.NextAction,
 		"error_detail": detail,
