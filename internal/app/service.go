@@ -848,6 +848,7 @@ func (s *Service) handleInboundMessage(ctx context.Context, message hub.PullResp
 
 func (s *Service) handleSkillRequest(ctx context.Context, message hub.PullResponse) error {
 	state := s.store.Snapshot()
+	callerAgentUUID, callerAgentURI := callerTargetFromMessage(message)
 	var payload dispatchPayload
 	rawDispatchPayload := message.OpenClawMessage.Payload
 	if rawDispatchPayload == nil {
@@ -857,8 +858,8 @@ func (s *Service) handleSkillRequest(ctx context.Context, message hub.PullRespon
 		pending := PendingTask{
 			ID:              NewID("task"),
 			ParentRequestID: message.OpenClawMessage.RequestID,
-			CallerAgentUUID: message.FromAgentUUID,
-			CallerAgentURI:  message.FromAgentURI,
+			CallerAgentUUID: callerAgentUUID,
+			CallerAgentURI:  callerAgentURI,
 			CallerRequestID: message.OpenClawMessage.RequestID,
 			LogPath:         filepath.Join(s.settings.DataDir, "logs", NewID("task")+".log"),
 		}
@@ -879,8 +880,8 @@ func (s *Service) handleSkillRequest(ctx context.Context, message hub.PullRespon
 		pending := PendingTask{
 			ID:                NewID("task"),
 			ParentRequestID:   message.OpenClawMessage.RequestID,
-			CallerAgentUUID:   message.FromAgentUUID,
-			CallerAgentURI:    message.FromAgentURI,
+			CallerAgentUUID:   callerAgentUUID,
+			CallerAgentURI:    callerAgentURI,
 			CallerRequestID:   message.OpenClawMessage.RequestID,
 			OriginalSkillName: req.SkillName,
 			Repo:              req.Repo,
@@ -890,7 +891,7 @@ func (s *Service) handleSkillRequest(ctx context.Context, message hub.PullRespon
 		return s.handleTaskFailure(ctx, state, pending, failureFromError("Task dispatch failed before it reached a connected agent.", err))
 	}
 
-	task, publishReq := s.buildPendingTask(state, target, req, message.FromAgentUUID, message.FromAgentURI)
+	task, publishReq := s.buildPendingTask(state, target, req, callerAgentUUID, callerAgentURI)
 	if err := s.writeTaskLog(task.LogPath, map[string]any{
 		"phase":          "forwarding",
 		"received_from":  message.FromAgentUUID,
@@ -1973,6 +1974,23 @@ func normalizeConnectedAgent(agent ConnectedAgent) ConnectedAgent {
 
 func hasCallerTarget(task PendingTask) bool {
 	return task.CallerAgentUUID != "" || task.CallerAgentURI != ""
+}
+
+func callerTargetFromMessage(message hub.PullResponse) (string, string) {
+	callerAgentUUID := strings.TrimSpace(message.FromAgentUUID)
+	callerAgentURI := strings.TrimSpace(message.FromAgentURI)
+	if callerAgentUUID != "" || callerAgentURI != "" {
+		return callerAgentUUID, callerAgentURI
+	}
+
+	replyTarget := strings.TrimSpace(message.OpenClawMessage.ReplyTarget)
+	if replyTarget == "" {
+		return "", ""
+	}
+	if strings.Contains(replyTarget, "://") {
+		return "", replyTarget
+	}
+	return replyTarget, ""
 }
 
 func normalizeAgentProfile(profile AgentProfile) AgentProfile {

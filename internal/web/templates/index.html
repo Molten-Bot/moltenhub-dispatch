@@ -104,15 +104,15 @@
           <dl class="dispatch-overview-stats" aria-label="Dispatch state summary">
             <div class="dispatch-overview-stat">
               <dt>Connected Agents</dt>
-              <dd>{{len .State.ConnectedAgents}}</dd>
+              <dd id="dispatch-overview-connected-agents-count">{{len .State.ConnectedAgents}}</dd>
             </div>
             <div class="dispatch-overview-stat">
               <dt>Pending Tasks</dt>
-              <dd>{{len .State.PendingTasks}}</dd>
+              <dd id="dispatch-overview-pending-tasks-count">{{len .State.PendingTasks}}</dd>
             </div>
             <div class="dispatch-overview-stat">
               <dt>Recent Events</dt>
-              <dd>{{len .State.RecentEvents}}</dd>
+              <dd id="dispatch-overview-recent-events-count">{{len .State.RecentEvents}}</dd>
             </div>
           </dl>
         </div>
@@ -232,8 +232,7 @@
             </div>
             <p class="dispatch-panel-copy">In-flight dispatches waiting on connected agents.</p>
           </div>
-          {{if .State.PendingTasks}}
-          <div class="list">
+          <div id="pending-tasks-list" class="list" {{if not .State.PendingTasks}}hidden{{end}}>
             {{range .State.PendingTasks}}
             <article class="card runtime-event-card" data-runtime-event-card>
               <div class="runtime-event-card-header">
@@ -251,9 +250,7 @@
             </article>
             {{end}}
           </div>
-          {{else}}
-          <p class="empty">No active dispatches.</p>
-          {{end}}
+          <p id="pending-tasks-empty" class="empty" {{if .State.PendingTasks}}hidden{{end}}>No active dispatches.</p>
         </article>
 
         <article class="panel">
@@ -264,8 +261,7 @@
             </div>
             <p class="dispatch-panel-copy">Connection changes, dispatch lifecycle events, and local runtime feedback.</p>
           </div>
-          {{if .State.RecentEvents}}
-          <div class="list">
+          <div id="recent-events-list" class="list" {{if not .State.RecentEvents}}hidden{{end}}>
             {{range .State.RecentEvents}}
             <article class="card runtime-event-card" data-runtime-event-card>
               <div class="runtime-event-card-header">
@@ -282,9 +278,7 @@
             </article>
             {{end}}
           </div>
-          {{else}}
-          <p class="empty">Runtime events will appear here.</p>
-          {{end}}
+          <p id="recent-events-empty" class="empty" {{if .State.RecentEvents}}hidden{{end}}>Runtime events will appear here.</p>
         </article>
       </section>
     </div>
@@ -545,6 +539,8 @@
   </div>
   {{end}}
   <script id="initial-connected-agents-data" type="application/json">{{toJSON .State.ConnectedAgents}}</script>
+  <script id="initial-pending-tasks-data" type="application/json">{{toJSON .State.PendingTasks}}</script>
+  <script id="initial-recent-events-data" type="application/json">{{toJSON .State.RecentEvents}}</script>
   <script>
     (() => {
       const shell = document.querySelector(".shell");
@@ -579,6 +575,13 @@
       const dispatchTaskSubmit = document.getElementById("dispatch-task-submit");
       const dispatchSubmitStatus = document.getElementById("dispatch-submit-status");
       const runtimeEventCards = Array.from(document.querySelectorAll("[data-runtime-event-card]"));
+      const pendingTasksList = document.getElementById("pending-tasks-list");
+      const pendingTasksEmpty = document.getElementById("pending-tasks-empty");
+      const recentEventsList = document.getElementById("recent-events-list");
+      const recentEventsEmpty = document.getElementById("recent-events-empty");
+      const dispatchOverviewConnectedAgentsCount = document.getElementById("dispatch-overview-connected-agents-count");
+      const dispatchOverviewPendingTasksCount = document.getElementById("dispatch-overview-pending-tasks-count");
+      const dispatchOverviewRecentEventsCount = document.getElementById("dispatch-overview-recent-events-count");
       const connectedAgentsList = document.getElementById("connected-agents-list");
       const connectedAgentsEmpty = document.getElementById("connected-agents-empty");
       const connectedAgentsRefreshButtons = Array.from(document.querySelectorAll("[data-connected-agents-refresh-button]"));
@@ -608,6 +611,8 @@
       const themeToggleIcon = document.getElementById("theme-toggle-icon");
       const themeToggleTooltip = document.getElementById("theme-toggle-tooltip");
       const initialConnectedAgentsData = document.getElementById("initial-connected-agents-data");
+      const initialPendingTasksData = document.getElementById("initial-pending-tasks-data");
+      const initialRecentEventsData = document.getElementById("initial-recent-events-data");
       const googleAnalyticsMeasurementID = String(window.__hubAnalyticsMeasurementID || "").trim();
 
       const THEME_KEY = "hubui.theme";
@@ -783,24 +788,102 @@
         themeToggleButton.setAttribute("aria-label", `Switch theme. Currently: ${currentLabel}`);
       };
 
+      const bindRuntimeEventCard = (card) => {
+        if (!(card instanceof HTMLElement)) {
+          return;
+        }
+        const toggle = card.querySelector("[data-runtime-event-toggle]");
+        const body = card.querySelector("[data-runtime-event-body]");
+        if (!(toggle instanceof HTMLButtonElement) || !(body instanceof HTMLElement)) {
+          return;
+        }
+        toggle.addEventListener("click", () => {
+          const expanded = toggle.getAttribute("aria-expanded") === "true";
+          const nextExpanded = !expanded;
+          toggle.setAttribute("aria-expanded", nextExpanded ? "true" : "false");
+          toggle.textContent = nextExpanded ? "Close" : "Open";
+          body.hidden = !nextExpanded;
+        });
+      };
+
       const initRuntimeEventCards = () => {
         runtimeEventCards.forEach((card) => {
-          if (!(card instanceof HTMLElement)) {
-            return;
-          }
-          const toggle = card.querySelector("[data-runtime-event-toggle]");
-          const body = card.querySelector("[data-runtime-event-body]");
-          if (!(toggle instanceof HTMLButtonElement) || !(body instanceof HTMLElement)) {
-            return;
-          }
-          toggle.addEventListener("click", () => {
-            const expanded = toggle.getAttribute("aria-expanded") === "true";
-            const nextExpanded = !expanded;
-            toggle.setAttribute("aria-expanded", nextExpanded ? "true" : "false");
-            toggle.textContent = nextExpanded ? "Close" : "Open";
-            body.hidden = !nextExpanded;
-          });
+          bindRuntimeEventCard(card);
         });
+      };
+
+      const formatRuntimeTimestamp = (value) => {
+        const raw = trimmedString(value);
+        if (raw === "") {
+          return "-";
+        }
+        const parsed = new Date(raw);
+        if (Number.isNaN(parsed.getTime())) {
+          return raw;
+        }
+        return parsed.toLocaleString(undefined, {
+          year: "numeric",
+          month: "short",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        });
+      };
+
+      const appendRuntimeRow = (container, label, value) => {
+        if (!(container instanceof HTMLElement)) {
+          return;
+        }
+        const text = trimmedString(value);
+        if (text === "") {
+          return;
+        }
+        const row = document.createElement("p");
+        if (label === "") {
+          row.textContent = text;
+          container.appendChild(row);
+          return;
+        }
+        const strong = document.createElement("strong");
+        strong.textContent = `${label}:`;
+        row.appendChild(strong);
+        row.appendChild(document.createTextNode(` ${text}`));
+        container.appendChild(row);
+      };
+
+      const createRuntimeEventCard = (titleText, bodyBuilder) => {
+        const card = document.createElement("article");
+        card.className = "card runtime-event-card";
+        card.setAttribute("data-runtime-event-card", "");
+
+        const header = document.createElement("div");
+        header.className = "runtime-event-card-header";
+
+        const title = document.createElement("h3");
+        title.textContent = trimmedString(titleText) || "Runtime event";
+        header.appendChild(title);
+
+        const toggle = document.createElement("button");
+        toggle.type = "button";
+        toggle.className = "runtime-event-card-toggle";
+        toggle.setAttribute("data-runtime-event-toggle", "");
+        toggle.setAttribute("aria-expanded", "false");
+        toggle.textContent = "Open";
+        header.appendChild(toggle);
+
+        const body = document.createElement("div");
+        body.className = "runtime-event-card-body";
+        body.setAttribute("data-runtime-event-body", "");
+        body.hidden = true;
+        if (typeof bodyBuilder === "function") {
+          bodyBuilder(body);
+        }
+
+        card.appendChild(header);
+        card.appendChild(body);
+        bindRuntimeEventCard(card);
+        return card;
       };
 
       const applyThemeMode = (theme, persist) => {
@@ -1519,20 +1602,26 @@
         transport: String(hubConnItem && hubConnItem.dataset.transport || "").trim() || "offline",
       };
       let latestConnectedAgents = [];
+      let latestPendingTasks = [];
+      let latestRecentEvents = [];
       let dispatchOverviewDismissTimer = 0;
       let dispatchOverviewDismissedThisSession = false;
 
-      const parseInitialConnectedAgents = () => {
-        if (!(initialConnectedAgentsData instanceof HTMLScriptElement)) {
+      const parseInitialArrayData = (node) => {
+        if (!(node instanceof HTMLScriptElement)) {
           return [];
         }
         try {
-          const parsed = JSON.parse(initialConnectedAgentsData.textContent || "[]");
+          const parsed = JSON.parse(node.textContent || "[]");
           return Array.isArray(parsed) ? parsed : [];
         } catch (_error) {
           return [];
         }
       };
+
+      const parseInitialConnectedAgents = () => parseInitialArrayData(initialConnectedAgentsData);
+      const parseInitialPendingTasks = () => parseInitialArrayData(initialPendingTasksData);
+      const parseInitialRecentEvents = () => parseInitialArrayData(initialRecentEventsData);
 
       const isHubConnectedState = (state = latestHubConnectionState) => {
         if (!bound || !state || typeof state !== "object") {
@@ -2372,6 +2461,79 @@
         return bound && connectedAgentsCount === 0;
       };
 
+      const syncDispatchOverviewStats = () => {
+        if (dispatchOverviewConnectedAgentsCount instanceof HTMLElement) {
+          dispatchOverviewConnectedAgentsCount.textContent = String(connectedAgentsCount);
+        }
+        if (dispatchOverviewPendingTasksCount instanceof HTMLElement) {
+          dispatchOverviewPendingTasksCount.textContent = String(latestPendingTasks.length);
+        }
+        if (dispatchOverviewRecentEventsCount instanceof HTMLElement) {
+          dispatchOverviewRecentEventsCount.textContent = String(latestRecentEvents.length);
+        }
+      };
+
+      const renderPendingTasks = (tasks) => {
+        const nextTasks = Array.isArray(tasks) ? tasks : [];
+        latestPendingTasks = nextTasks;
+        if (!(pendingTasksList instanceof HTMLElement) || !(pendingTasksEmpty instanceof HTMLElement)) {
+          syncDispatchOverviewStats();
+          return;
+        }
+        pendingTasksList.innerHTML = "";
+        if (nextTasks.length === 0) {
+          pendingTasksList.hidden = true;
+          pendingTasksEmpty.hidden = false;
+          syncDispatchOverviewStats();
+          return;
+        }
+        nextTasks.forEach((task) => {
+          const title = trimmedString(task && task.original_skill_name) || trimmedString(task && task.id) || "Pending task";
+          const card = createRuntimeEventCard(title, (body) => {
+            appendRuntimeRow(body, "Task", task && task.id);
+            appendRuntimeRow(body, "Child request", task && task.child_request_id);
+            appendRuntimeRow(body, "Target agent", trimmedString(task && task.target_agent_uuid) || trimmedString(task && task.target_agent_uri));
+            appendRuntimeRow(body, "Repo", task && task.repo);
+            appendRuntimeRow(body, "Log path", task && task.log_path);
+            appendRuntimeRow(body, "Expires", formatRuntimeTimestamp(task && task.expires_at));
+          });
+          pendingTasksList.appendChild(card);
+        });
+        pendingTasksEmpty.hidden = true;
+        pendingTasksList.hidden = false;
+        syncDispatchOverviewStats();
+      };
+
+      const renderRecentEvents = (events) => {
+        const nextEvents = Array.isArray(events) ? events : [];
+        latestRecentEvents = nextEvents;
+        if (!(recentEventsList instanceof HTMLElement) || !(recentEventsEmpty instanceof HTMLElement)) {
+          syncDispatchOverviewStats();
+          return;
+        }
+        recentEventsList.innerHTML = "";
+        if (nextEvents.length === 0) {
+          recentEventsList.hidden = true;
+          recentEventsEmpty.hidden = false;
+          syncDispatchOverviewStats();
+          return;
+        }
+        nextEvents.forEach((event) => {
+          const title = trimmedString(event && event.title) || "Runtime event";
+          const card = createRuntimeEventCard(title, (body) => {
+            appendRuntimeRow(body, "When", formatRuntimeTimestamp(event && event.at));
+            appendRuntimeRow(body, "Level", event && event.level);
+            appendRuntimeRow(body, "", event && event.detail);
+            appendRuntimeRow(body, "Task", event && event.task_id);
+            appendRuntimeRow(body, "Log", event && event.log_path);
+          });
+          recentEventsList.appendChild(card);
+        });
+        recentEventsEmpty.hidden = true;
+        recentEventsList.hidden = false;
+        syncDispatchOverviewStats();
+      };
+
       const renderConnectedAgents = (agents) => {
         const nextAgents = Array.isArray(agents) ? agents : [];
         latestConnectedAgents = nextAgents;
@@ -2401,6 +2563,7 @@
         if (bound) {
           stopConnectedAgentsAutoRefresh("Auto-refresh paused while agents are connected.");
         }
+        syncDispatchOverviewStats();
       };
 
       const setConnectedAgentsRefreshProgress = (ratio) => {
@@ -2592,6 +2755,14 @@
           const snapshot = await response.json();
           setLocalConnection();
           renderHubConnection(snapshot);
+          const pendingTasks = Array.isArray(snapshot && snapshot.pending_tasks)
+            ? snapshot.pending_tasks
+            : [];
+          const recentEvents = Array.isArray(snapshot && snapshot.recent_events)
+            ? snapshot.recent_events
+            : [];
+          renderPendingTasks(pendingTasks);
+          renderRecentEvents(recentEvents);
         } catch (error) {
           const message = error instanceof Error ? error.message : "Unable to refresh hub status.";
           setLocalConnection();
@@ -2720,6 +2891,8 @@
         skillNameSelect.addEventListener("change", updateSkillNameOptions);
       }
       initRuntimeEventCards();
+      renderPendingTasks(parseInitialPendingTasks());
+      renderRecentEvents(parseInitialRecentEvents());
       renderConnectedAgents(parseInitialConnectedAgents());
 
       setConnectedAgentsRefreshProgress(0);

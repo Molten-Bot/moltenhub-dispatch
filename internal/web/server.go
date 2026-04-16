@@ -119,7 +119,11 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	state := s.service.Snapshot()
-	view := connectionStatusView(state)
+	view := statusView{
+		connectionView: connectionStatusView(state),
+		PendingTasks:   state.PendingTasks,
+		RecentEvents:   state.RecentEvents,
+	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_ = json.NewEncoder(w).Encode(view)
 }
@@ -785,6 +789,12 @@ type connectionView struct {
 	HubBaseURL   string `json:"hub_base_url,omitempty"`
 	HubDomain    string `json:"hub_domain,omitempty"`
 	HubDetail    string `json:"hub_detail,omitempty"`
+}
+
+type statusView struct {
+	connectionView
+	PendingTasks []app.PendingTask  `json:"pending_tasks"`
+	RecentEvents []app.RuntimeEvent `json:"recent_events"`
 }
 
 type subActionView struct {

@@ -1594,6 +1594,65 @@ func TestHandleIndexRendersPendingTasksPanelInMainUI(t *testing.T) {
 	}
 }
 
+func TestHandleIndexIncludesPollingHooksForQueueAndActivity(t *testing.T) {
+	t.Parallel()
+
+	server, err := New(&stubService{
+		state: app.AppState{
+			Settings: app.DefaultSettings(),
+			Session: app.Session{
+				AgentToken: "agent-token",
+			},
+			Connection: app.ConnectionState{
+				Status:    app.ConnectionStatusConnected,
+				Transport: app.ConnectionTransportHTTP,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 response, got %d", rec.Code)
+	}
+	if !strings.Contains(body, `id="pending-tasks-list"`) {
+		t.Fatalf("expected pending tasks list hook, body=%s", body)
+	}
+	if !strings.Contains(body, `id="pending-tasks-empty"`) {
+		t.Fatalf("expected pending tasks empty-state hook, body=%s", body)
+	}
+	if !strings.Contains(body, `id="recent-events-list"`) {
+		t.Fatalf("expected recent events list hook, body=%s", body)
+	}
+	if !strings.Contains(body, `id="recent-events-empty"`) {
+		t.Fatalf("expected recent events empty-state hook, body=%s", body)
+	}
+	if !strings.Contains(body, `id="initial-pending-tasks-data" type="application/json"`) {
+		t.Fatalf("expected initial pending-tasks bootstrap payload script, body=%s", body)
+	}
+	if !strings.Contains(body, `id="initial-recent-events-data" type="application/json"`) {
+		t.Fatalf("expected initial recent-events bootstrap payload script, body=%s", body)
+	}
+	if !strings.Contains(body, `const pendingTasks = Array.isArray(snapshot && snapshot.pending_tasks)`) {
+		t.Fatalf("expected status polling to extract pending tasks from /status payload, body=%s", body)
+	}
+	if !strings.Contains(body, `const recentEvents = Array.isArray(snapshot && snapshot.recent_events)`) {
+		t.Fatalf("expected status polling to extract recent events from /status payload, body=%s", body)
+	}
+	if !strings.Contains(body, `renderPendingTasks(pendingTasks);`) {
+		t.Fatalf("expected status polling to rerender pending tasks, body=%s", body)
+	}
+	if !strings.Contains(body, `renderRecentEvents(recentEvents);`) {
+		t.Fatalf("expected status polling to rerender recent events, body=%s", body)
+	}
+}
+
 func TestHandleIndexRendersBottomDockAndSettingsDialogForBoundSession(t *testing.T) {
 	t.Parallel()
 
@@ -2442,6 +2501,65 @@ func TestHandleStatusReturnsConnectionView(t *testing.T) {
 	}
 	if view.HubTransport != app.ConnectionTransportHTTP {
 		t.Fatalf("unexpected hub transport: %#v", view)
+	}
+}
+
+func TestHandleStatusIncludesPendingTasksAndRecentEvents(t *testing.T) {
+	t.Parallel()
+
+	eventTime := time.Unix(1735689600, 0).UTC()
+	server, err := New(&stubService{
+		state: app.AppState{
+			Connection: app.ConnectionState{
+				Status:    app.ConnectionStatusConnected,
+				Transport: app.ConnectionTransportHTTP,
+			},
+			PendingTasks: []app.PendingTask{
+				{
+					ID:                "task-1",
+					ChildRequestID:    "child-1",
+					OriginalSkillName: "code_for_me",
+				},
+			},
+			RecentEvents: []app.RuntimeEvent{
+				{
+					At:     eventTime,
+					Level:  "info",
+					Title:  "Task dispatched",
+					Detail: "Queued code_for_me for worker-1",
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/status", nil)
+	rec := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 response, got %d", rec.Code)
+	}
+
+	var view struct {
+		Status       string             `json:"status"`
+		PendingTasks []app.PendingTask  `json:"pending_tasks"`
+		RecentEvents []app.RuntimeEvent `json:"recent_events"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &view); err != nil {
+		t.Fatalf("decode status response: %v", err)
+	}
+	if view.Status != app.ConnectionStatusConnected {
+		t.Fatalf("unexpected status payload: %#v", view)
+	}
+	if len(view.PendingTasks) != 1 || view.PendingTasks[0].ID != "task-1" {
+		t.Fatalf("unexpected pending_tasks payload: %#v", view.PendingTasks)
+	}
+	if len(view.RecentEvents) != 1 || view.RecentEvents[0].Title != "Task dispatched" {
+		t.Fatalf("unexpected recent_events payload: %#v", view.RecentEvents)
 	}
 }
 

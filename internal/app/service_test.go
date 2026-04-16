@@ -1115,6 +1115,64 @@ func TestHandleDispatchResolutionFailureSendsDetailedFailureWithoutFollowUp(t *t
 
 }
 
+func TestHandleDispatchResolutionFailureUsesReplyTargetWhenCallerMetadataMissing(t *testing.T) {
+	t.Parallel()
+
+	service, fake := newTestService(t)
+	err := service.store.Update(func(state *AppState) error {
+		state.Session.AgentToken = "agent-token"
+		state.Session.AgentUUID = "self-uuid"
+		state.Session.AgentURI = "molten://dispatch/self"
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("seed store: %v", err)
+	}
+
+	replyTarget := "molten://agent/caller-reply-target"
+	message := hub.PullResponse{
+		DeliveryID: "delivery-1",
+		OpenClawMessage: hub.OpenClawMessage{
+			Type:        "skill_request",
+			SkillName:   dispatchSkillName,
+			RequestID:   "parent-req",
+			ReplyTarget: replyTarget,
+			Payload: map[string]any{
+				"target_agent_uuid": "missing-agent",
+				"skill_name":        "run_task",
+				"payload": map[string]any{
+					"input": testDispatchPrompt,
+				},
+				"payload_format": "json",
+			},
+		},
+	}
+
+	if err := service.handleInboundMessage(context.Background(), message); err != nil {
+		t.Fatalf("handle inbound message: %v", err)
+	}
+
+	if len(fake.publishCalls) != 1 {
+		t.Fatalf("expected one caller failure publish, got %d", len(fake.publishCalls))
+	}
+	if got := fake.publishCalls[0].ToAgentURI; got != replyTarget {
+		t.Fatalf("expected failure response to use reply_target URI %q, got %q", replyTarget, got)
+	}
+	if got := fake.publishCalls[0].ToAgentUUID; got != "" {
+		t.Fatalf("expected no caller UUID when reply_target URI is used, got %q", got)
+	}
+	failurePayload, ok := fake.publishCalls[0].Message.Payload.(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected caller failure payload type: %T", fake.publishCalls[0].Message.Payload)
+	}
+	if got := failurePayload["status"]; got != "failed" {
+		t.Fatalf("expected failed status in caller failure payload, got %#v", got)
+	}
+	if got := failurePayload["error_detail"]; got == nil {
+		t.Fatalf("expected error_detail in caller failure payload, got %#v", failurePayload)
+	}
+}
+
 func TestHandleDownstreamFailureSendsDetailedFailureWithoutFollowUp(t *testing.T) {
 	t.Parallel()
 
