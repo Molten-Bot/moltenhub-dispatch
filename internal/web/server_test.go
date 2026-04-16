@@ -1565,11 +1565,14 @@ func TestHandleIndexRendersPendingTasksPanelInMainUI(t *testing.T) {
 			},
 			PendingTasks: []app.PendingTask{
 				{
-					ID:                "task-1",
-					OriginalSkillName: "run_task",
-					TargetAgentUUID:   "worker-uuid",
-					LogPath:           "/tmp/logs/task-1.log",
-					ExpiresAt:         time.Now().Add(time.Minute),
+					ID:                     "task-1",
+					Status:                 app.PendingTaskStatusInQueue,
+					OriginalSkillName:      "run_task",
+					TargetAgentDisplayName: "Worker A",
+					TargetAgentEmoji:       "🛠",
+					TargetAgentUUID:        "worker-uuid",
+					LogPath:                "/tmp/logs/task-1.log",
+					ExpiresAt:              time.Now().Add(time.Minute),
 				},
 			},
 		},
@@ -1588,6 +1591,12 @@ func TestHandleIndexRendersPendingTasksPanelInMainUI(t *testing.T) {
 	}
 	if !strings.Contains(body, ">Pending Tasks<") {
 		t.Fatalf("expected pending tasks panel in main UI, body=%s", body)
+	}
+	if !strings.Contains(body, "Worker A") || !strings.Contains(body, "🛠") {
+		t.Fatalf("expected pending task card to render agent display name and emoji, body=%s", body)
+	}
+	if !strings.Contains(body, "In Queue") {
+		t.Fatalf("expected pending task status label to render in queue state, body=%s", body)
 	}
 	if strings.Contains(body, ">Queued Follow-Ups<") {
 		t.Fatalf("did not expect queued follow-up panel in main UI, body=%s", body)
@@ -1778,13 +1787,16 @@ func TestHandleIndexKeepsPendingTasksClosedByDefault(t *testing.T) {
 			Settings: app.DefaultSettings(),
 			PendingTasks: []app.PendingTask{
 				{
-					ID:                "task-1",
-					OriginalSkillName: "run_task",
-					ChildRequestID:    "child-1",
-					TargetAgentUUID:   "worker-uuid",
-					Repo:              "git@github.com:Molten-Bot/moltenhub-code.git",
-					LogPath:           ".moltenhub/logs/task-1.log",
-					ExpiresAt:         time.Now().Add(time.Minute),
+					ID:                     "task-1",
+					Status:                 app.PendingTaskStatusSending,
+					OriginalSkillName:      "run_task",
+					ChildRequestID:         "child-1",
+					TargetAgentDisplayName: "Worker A",
+					TargetAgentEmoji:       "🛠",
+					TargetAgentUUID:        "worker-uuid",
+					Repo:                   "git@github.com:Molten-Bot/moltenhub-code.git",
+					LogPath:                ".moltenhub/logs/task-1.log",
+					ExpiresAt:              time.Now().Add(time.Minute),
 				},
 			},
 		},
@@ -1815,6 +1827,9 @@ func TestHandleIndexKeepsPendingTasksClosedByDefault(t *testing.T) {
 	}
 	if strings.Contains(body, `data-runtime-event-toggle aria-expanded="true">Close</button>`) {
 		t.Fatalf("expected pending task toggles to render closed by default, body=%s", body)
+	}
+	if !strings.Contains(body, "Sending") {
+		t.Fatalf("expected pending task status label to render sending state, body=%s", body)
 	}
 }
 

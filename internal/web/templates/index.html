@@ -237,13 +237,31 @@
             {{range .State.PendingTasks}}
             <article class="card runtime-event-card" data-runtime-event-card>
               <div class="runtime-event-card-header">
-                <h3>{{if .OriginalSkillName}}{{.OriginalSkillName}}{{else}}{{.ID}}{{end}}</h3>
+                <div>
+                  <h3>
+                    {{if .TargetAgentEmoji}}{{.TargetAgentEmoji}} {{end}}
+                    {{if .TargetAgentDisplayName}}{{.TargetAgentDisplayName}}{{else if .TargetAgentUUID}}{{.TargetAgentUUID}}{{else if .TargetAgentURI}}{{.TargetAgentURI}}{{else}}Unknown agent{{end}}
+                  </h3>
+                  <p class="runtime-event-card-subtitle">
+                    {{if .OriginalSkillName}}{{.OriginalSkillName}}{{else}}{{.ID}}{{end}}
+                    <span class="runtime-event-card-status runtime-event-card-status-{{if eq .Status "sending"}}sending{{else}}queued{{end}}">
+                      {{if eq .Status "sending"}}Sending{{else}}In Queue{{end}}
+                    </span>
+                  </p>
+                </div>
                 <button type="button" class="runtime-event-card-toggle" data-runtime-event-toggle aria-expanded="false">Open</button>
               </div>
               <div class="runtime-event-card-body" data-runtime-event-body hidden>
                 <p><strong>Task:</strong> {{.ID}}</p>
                 <p><strong>Child request:</strong> {{.ChildRequestID}}</p>
-                {{if .TargetAgentUUID}}<p><strong>Target agent:</strong> {{.TargetAgentUUID}}</p>{{else if .TargetAgentURI}}<p><strong>Target agent:</strong> {{.TargetAgentURI}}</p>{{end}}
+                <p><strong>Status:</strong> {{if eq .Status "sending"}}Sending{{else}}In Queue{{end}}</p>
+                {{if .TargetAgentDisplayName}}
+                <p><strong>Target agent:</strong> {{if .TargetAgentEmoji}}{{.TargetAgentEmoji}} {{end}}{{.TargetAgentDisplayName}}</p>
+                {{else if .TargetAgentUUID}}
+                <p><strong>Target agent:</strong> {{.TargetAgentUUID}}</p>
+                {{else if .TargetAgentURI}}
+                <p><strong>Target agent:</strong> {{.TargetAgentURI}}</p>
+                {{end}}
                 {{if .Repo}}<p><strong>Repo:</strong> {{.Repo}}</p>{{end}}
                 {{if .LogPath}}<p><strong>Log path:</strong> {{.LogPath}}</p>{{end}}
                 {{if .ExpiresAt.IsZero}}{{else}}<p><strong>Expires:</strong> {{.ExpiresAt}}</p>{{end}}
@@ -2672,7 +2690,7 @@
           }
           dispatchRequestInFlight = true;
           setDispatchSubmitBusy(true);
-          setDispatchSubmitStatus("Dispatching task...");
+          setDispatchSubmitStatus("Sending...");
           try {
             const formData = new FormData(manualDispatchForm);
             formData.set("target_agent_ref", dispatchState.targetRef);
@@ -2704,8 +2722,8 @@
               skillPayloadFormatInput.value = "";
             }
             setSkillPayloadValidationMessage("");
-            const successMessage = trimmedString(body && body.message)
-              || (trimmedString(body && body.task_id) ? `Dispatched task ${String(body.task_id).trim()}` : "Task dispatched.");
+            const taskID = trimmedString(body && body.task_id);
+            const successMessage = taskID ? `In Queue: ${taskID}` : "In Queue.";
             setDispatchSubmitStatus(successMessage);
           } catch (error) {
             const message = error instanceof Error ? error.message : "Unable to dispatch task.";

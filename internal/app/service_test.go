@@ -1620,9 +1620,11 @@ func TestDispatchFromUIInfersDefaultSkillForTargetAgent(t *testing.T) {
 	t.Parallel()
 
 	service, fake := newTestService(t)
+	worker := testConnectedAgent("worker-a", "Worker A", "worker-uuid", Skill{Name: "run_task"})
+	worker.Metadata.Emoji = "🛠"
 	err := service.store.Update(func(state *AppState) error {
 		state.Session.AgentToken = "agent-token"
-		state.ConnectedAgents = []ConnectedAgent{testConnectedAgent("worker-a", "Worker A", "worker-uuid", Skill{Name: "run_task"})}
+		state.ConnectedAgents = []ConnectedAgent{worker}
 		return nil
 	})
 	if err != nil {
@@ -1639,6 +1641,15 @@ func TestDispatchFromUIInfersDefaultSkillForTargetAgent(t *testing.T) {
 
 	if task.OriginalSkillName != "run_task" {
 		t.Fatalf("expected inferred skill name, got %#v", task)
+	}
+	if got := task.Status; got != PendingTaskStatusInQueue {
+		t.Fatalf("expected task status %q, got %#v", PendingTaskStatusInQueue, task)
+	}
+	if got := task.TargetAgentDisplayName; got != "Worker A" {
+		t.Fatalf("expected target display name, got %#v", task)
+	}
+	if got := task.TargetAgentEmoji; got != "🛠" {
+		t.Fatalf("expected target emoji, got %#v", task)
 	}
 	if len(fake.publishCalls) != 1 {
 		t.Fatalf("expected one publish call, got %d", len(fake.publishCalls))
@@ -1682,9 +1693,11 @@ func TestHandleSkillRequestAcceptsTargetAgentRefViaInput(t *testing.T) {
 	t.Parallel()
 
 	service, fake := newTestService(t)
+	worker := testConnectedAgent("worker-a", "Worker A", "worker-uuid", Skill{Name: "run_task"})
+	worker.Metadata.Emoji = "🛠"
 	err := service.store.Update(func(state *AppState) error {
 		state.Session.AgentToken = "agent-token"
-		state.ConnectedAgents = []ConnectedAgent{testConnectedAgent("worker-a", "Worker A", "worker-uuid", Skill{Name: "run_task"})}
+		state.ConnectedAgents = []ConnectedAgent{worker}
 		return nil
 	})
 	if err != nil {
@@ -1733,6 +1746,15 @@ func TestHandleSkillRequestAcceptsTargetAgentRefViaInput(t *testing.T) {
 	}
 	if got := state.PendingTasks[0].OriginalSkillName; got != "run_task" {
 		t.Fatalf("unexpected pending task skill name: %#v", state.PendingTasks[0])
+	}
+	if got := state.PendingTasks[0].Status; got != PendingTaskStatusInQueue {
+		t.Fatalf("unexpected pending task status: %#v", state.PendingTasks[0])
+	}
+	if got := state.PendingTasks[0].TargetAgentDisplayName; got != "Worker A" {
+		t.Fatalf("unexpected pending task display name: %#v", state.PendingTasks[0])
+	}
+	if got := state.PendingTasks[0].TargetAgentEmoji; got != "🛠" {
+		t.Fatalf("unexpected pending task emoji: %#v", state.PendingTasks[0])
 	}
 }
 
