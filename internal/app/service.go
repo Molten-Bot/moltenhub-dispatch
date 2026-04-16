@@ -473,24 +473,29 @@ func (s *Service) DispatchFromUI(ctx context.Context, req DispatchRequest) (Pend
 
 	task, publishReq := s.buildPendingTask(state, target, req, "", "")
 	if err := s.writeTaskLog(task.LogPath, map[string]any{
-		"phase":   "queued",
+		"phase":   PendingTaskStatusSending,
 		"task_id": task.ID,
 		"target":  target,
 		"request": req,
 	}); err != nil {
 		return PendingTask{}, err
 	}
-
-	if _, err := s.hub.PublishOpenClaw(ctx, state.Session.AgentToken, publishReq); err != nil {
-		s.noteHubInteraction(err, ConnectionTransportHTTP)
-		return PendingTask{}, s.failUIRequest(ctx, state, task, err)
-	}
-	s.noteHubInteraction(nil, ConnectionTransportHTTP)
-
 	if err := s.store.Update(func(current *AppState) error {
 		current.PendingTasks = append(current.PendingTasks, task)
 		return nil
 	}); err != nil {
+		return PendingTask{}, err
+	}
+
+	if _, err := s.hub.PublishOpenClaw(ctx, state.Session.AgentToken, publishReq); err != nil {
+		s.noteHubInteraction(err, ConnectionTransportHTTP)
+		failureErr := s.failUIRequest(ctx, state, task, err)
+		removeErr := s.removePendingTask(task.ChildRequestID)
+		return PendingTask{}, errors.Join(failureErr, removeErr)
+	}
+	s.noteHubInteraction(nil, ConnectionTransportHTTP)
+	task.Status = PendingTaskStatusInQueue
+	if err := s.setPendingTaskStatus(task.ChildRequestID, task.Status); err != nil {
 		return PendingTask{}, err
 	}
 	_ = s.logEvent("info", "Task dispatched", fmt.Sprintf("Queued %s for %s", req.SkillName, connectedAgentNameOrRef(target)), task.ID, task.LogPath)
@@ -893,7 +898,7 @@ func (s *Service) handleSkillRequest(ctx context.Context, message hub.PullRespon
 
 	task, publishReq := s.buildPendingTask(state, target, req, callerAgentUUID, callerAgentURI)
 	if err := s.writeTaskLog(task.LogPath, map[string]any{
-		"phase":          "forwarding",
+		"phase":          PendingTaskStatusSending,
 		"received_from":  message.FromAgentUUID,
 		"received_skill": message.OpenClawMessage.SkillName,
 		"task_id":        task.ID,
@@ -901,17 +906,21 @@ func (s *Service) handleSkillRequest(ctx context.Context, message hub.PullRespon
 	}); err != nil {
 		return err
 	}
-
-	if _, err := s.hub.PublishOpenClaw(ctx, state.Session.AgentToken, publishReq); err != nil {
-		s.noteHubInteraction(err, ConnectionTransportHTTP)
-		return s.handleTaskFailure(ctx, state, task, failureFromError("Task dispatch failed before it reached a connected agent.", err))
-	}
-	s.noteHubInteraction(nil, ConnectionTransportHTTP)
-
 	if err := s.store.Update(func(current *AppState) error {
 		current.PendingTasks = append(current.PendingTasks, task)
 		return nil
 	}); err != nil {
+		return err
+	}
+
+	if _, err := s.hub.PublishOpenClaw(ctx, state.Session.AgentToken, publishReq); err != nil {
+		s.noteHubInteraction(err, ConnectionTransportHTTP)
+		failureErr := s.handleTaskFailure(ctx, state, task, failureFromError("Task dispatch failed before it reached a connected agent.", err))
+		removeErr := s.removePendingTask(task.ChildRequestID)
+		return errors.Join(failureErr, removeErr)
+	}
+	s.noteHubInteraction(nil, ConnectionTransportHTTP)
+	if err := s.setPendingTaskStatus(task.ChildRequestID, PendingTaskStatusInQueue); err != nil {
 		return err
 	}
 	return s.logEvent("info", "Forwarded request", fmt.Sprintf("Forwarded %s to %s", req.SkillName, connectedAgentNameOrRef(target)), task.ID, task.LogPath)
@@ -981,6 +990,23 @@ func (s *Service) removePendingTask(childRequestID string) error {
 	}
 	return s.store.Update(func(current *AppState) error {
 		current.PendingTasks = RemovePendingTask(current.PendingTasks, childRequestID)
+		return nil
+	})
+}
+
+func (s *Service) setPendingTaskStatus(childRequestID, status string) error {
+	childRequestID = strings.TrimSpace(childRequestID)
+	status = normalizePendingTaskStatus(status)
+	if childRequestID == "" || status == "" {
+		return nil
+	}
+	return s.store.Update(func(current *AppState) error {
+		for i := range current.PendingTasks {
+			if current.PendingTasks[i].ChildRequestID == childRequestID {
+				current.PendingTasks[i].Status = status
+				return nil
+			}
+		}
 		return nil
 	})
 }
@@ -1058,21 +1084,24 @@ func (s *Service) buildPendingTask(state AppState, target ConnectedAgent, req Di
 	}
 	payloadFormat := normalizePayloadFormat(req.PayloadFormat, outboundPayload)
 	task := PendingTask{
-		ID:                    taskID,
-		ParentRequestID:       req.RequestID,
-		ChildRequestID:        childRequestID,
-		OriginalSkillName:     req.SkillName,
-		TargetAgentUUID:       target.AgentUUID,
-		TargetAgentURI:        target.URI,
-		CallerAgentUUID:       callerAgentUUID,
-		CallerAgentURI:        callerAgentURI,
-		CallerRequestID:       req.RequestID,
-		Repo:                  req.Repo,
-		LogPath:               logPath,
-		CreatedAt:             now,
-		ExpiresAt:             now.Add(timeout),
-		DispatchPayload:       payload,
-		DispatchPayloadFormat: payloadFormat,
+		ID:                     taskID,
+		Status:                 PendingTaskStatusSending,
+		ParentRequestID:        req.RequestID,
+		ChildRequestID:         childRequestID,
+		OriginalSkillName:      req.SkillName,
+		TargetAgentDisplayName: connectedAgentDisplayName(target),
+		TargetAgentEmoji:       coalesceTrimmed(connectedAgentEmoji(target), "🙂"),
+		TargetAgentUUID:        target.AgentUUID,
+		TargetAgentURI:         target.URI,
+		CallerAgentUUID:        callerAgentUUID,
+		CallerAgentURI:         callerAgentURI,
+		CallerRequestID:        req.RequestID,
+		Repo:                   req.Repo,
+		LogPath:                logPath,
+		CreatedAt:              now,
+		ExpiresAt:              now.Add(timeout),
+		DispatchPayload:        payload,
+		DispatchPayloadFormat:  payloadFormat,
 	}
 
 	message := newSkillRequestMessage(
@@ -1731,6 +1760,17 @@ func payloadStringIndicatesFailure(value string) bool {
 		return true
 	}
 	return false
+}
+
+func normalizePendingTaskStatus(status string) string {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case PendingTaskStatusSending:
+		return PendingTaskStatusSending
+	case "", PendingTaskStatusInQueue:
+		return PendingTaskStatusInQueue
+	default:
+		return PendingTaskStatusInQueue
+	}
 }
 
 func boolFromAny(value any) (bool, bool) {

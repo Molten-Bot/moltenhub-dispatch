@@ -4543,6 +4543,40 @@ body.settings-modal-open {
   margin: 0;
 }
 
+.runtime-event-card-subtitle {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.runtime-event-card-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.runtime-event-card-status-sending {
+  border: 1px solid color-mix(in srgb, var(--text) 20%, var(--border));
+  background: color-mix(in srgb, var(--surface-library-bg) 82%, rgba(255, 255, 255, 0.08));
+  color: var(--text);
+}
+
+.runtime-event-card-status-queued {
+  border: 1px solid color-mix(in srgb, var(--running) 30%, var(--border));
+  background: color-mix(in srgb, var(--running) 14%, transparent);
+  color: var(--running);
+}
+
 .runtime-event-card-toggle {
   padding: 6px 10px;
   border: 1px solid color-mix(in srgb, var(--running) 28%, var(--border));
