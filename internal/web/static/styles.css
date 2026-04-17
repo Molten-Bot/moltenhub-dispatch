@@ -620,6 +620,12 @@ textarea {
   text-transform: uppercase;
 }
 
+.panel-header-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
 .task-fullscreen-head-label {
   min-width: 0;
   flex: 1 1 auto;
@@ -706,6 +712,7 @@ body .right-col.prompt-collapsed.task-list-hidden {
   display: flex;
   flex-direction: column;
   position: relative;
+  padding: 0;
   left: auto;
   right: auto;
   bottom: auto;
@@ -779,7 +786,7 @@ body .right-col.prompt-collapsed.task-list-hidden {
 .prompt-form {
   display: grid;
   gap: 10px;
-  padding: 14px;
+  padding: 14px 14px 18px;
   min-width: 0;
   min-height: 0;
   overflow-y: auto;
@@ -5198,6 +5205,12 @@ p,
   font-size: var(--text-base);
   color: var(--muted-foreground);
   line-height: 1.6;
+}
+
+.dispatch-panel-body {
+  display: grid;
+  gap: 12px;
+  padding: 14px 14px 18px;
 }
 
 .stack {
