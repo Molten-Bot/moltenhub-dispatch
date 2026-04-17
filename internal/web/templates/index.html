@@ -127,14 +127,16 @@
 
     {{if not .State.Session.AgentToken}}
     <section class="grid two-up">
-      <article class="panel dispatch-gate-panel brand-login-card-shell">
-        <div class="dispatch-panel-header">
-          <div class="dispatch-panel-header-copy">
+      <article class="panel prompt-wrap dispatch-gate-panel brand-login-card-shell min-h-[220px] overflow-visible rounded-2xl border border-hub-border bg-hub-panel bg-[linear-gradient(170deg,rgba(255,255,255,0.02),rgba(255,255,255,0.01))]">
+        <div class="panel-header prompt-titlebar flex items-center justify-between gap-2 border-b border-hub-border px-3.5 py-3 text-[0.92rem] font-semibold uppercase tracking-[0.03em]">
+          <div class="panel-header-copy">
             <p class="eyebrow dispatch-panel-eyebrow">1. Onboarding</p>
-            <h2>Connect this dispatcher to Molten Hub</h2>
+            <h2 class="panel-section-title">Connect this dispatcher to Molten Hub</h2>
           </div>
         </div>
-        <p class="empty">Choose a runtime region, reuse an existing agent token or bind a new dispatcher identity, then save the agent profile once to finish setup.</p>
+        <div class="dispatch-panel-body">
+          <p class="empty panel-section-copy">Choose a runtime region, reuse an existing agent token or bind a new dispatcher identity, then save the agent profile once to finish setup.</p>
+        </div>
       </article>
     </section>
     {{end}}
@@ -227,53 +229,55 @@
       </section>
 
       <section class="grid">
-        <article class="panel">
-          <div class="dispatch-panel-header">
-            <div class="dispatch-panel-header-copy">
+        <article class="panel prompt-wrap brand-login-card-shell min-h-[220px] overflow-visible rounded-2xl border border-hub-border bg-hub-panel bg-[linear-gradient(170deg,rgba(255,255,255,0.02),rgba(255,255,255,0.01))]">
+          <div class="panel-header prompt-titlebar flex items-center justify-between gap-2 border-b border-hub-border px-3.5 py-3 text-[0.92rem] font-semibold uppercase tracking-[0.03em]">
+            <div class="panel-header-copy">
               <p class="eyebrow dispatch-panel-eyebrow">Activity</p>
-              <h2>Recent Activity</h2>
+              <h2 class="panel-section-title">Recent Activity</h2>
             </div>
-            <p class="dispatch-panel-copy">Pending tasks and runtime events in one time-sorted feed.</p>
+            <p class="dispatch-panel-copy panel-section-copy">Pending tasks and runtime events in one time-sorted feed.</p>
           </div>
-          <div id="activity-feed-list" class="list" {{if not .ActivityFeed}}hidden{{end}}>
-            {{range .ActivityFeed}}
-            <article class="card runtime-event-card" data-runtime-event-card>
-              <div class="runtime-event-card-header">
-                <div>
-                  <h3>{{.Title}}</h3>
-                  {{if .Subtitle}}
-                  <p class="runtime-event-card-subtitle">
-                    {{.Subtitle}}
-                    {{if .Status}}
-                    <span class="{{.StatusClass}}">{{.Status}}</span>
+          <div class="dispatch-panel-body">
+            <div id="activity-feed-list" class="list" {{if not .ActivityFeed}}hidden{{end}}>
+              {{range .ActivityFeed}}
+              <article class="card runtime-event-card" data-runtime-event-card>
+                <div class="runtime-event-card-header">
+                  <div>
+                    <h3>{{.Title}}</h3>
+                    {{if .Subtitle}}
+                    <p class="runtime-event-card-subtitle">
+                      {{.Subtitle}}
+                      {{if .Status}}
+                      <span class="{{.StatusClass}}">{{.Status}}</span>
+                      {{end}}
+                    </p>
+                    {{else if .Status}}
+                    <p class="runtime-event-card-subtitle">
+                      <span class="{{.StatusClass}}">{{.Status}}</span>
+                    </p>
                     {{end}}
-                  </p>
-                  {{else if .Status}}
-                  <p class="runtime-event-card-subtitle">
-                    <span class="{{.StatusClass}}">{{.Status}}</span>
-                  </p>
-                  {{end}}
+                  </div>
+                  <button type="button" class="runtime-event-card-toggle" data-runtime-event-toggle aria-expanded="false">Open</button>
                 </div>
-                <button type="button" class="runtime-event-card-toggle" data-runtime-event-toggle aria-expanded="false">Open</button>
-              </div>
-              <div class="runtime-event-card-body" data-runtime-event-body hidden>
-                {{if .WhenLabel}}<p><strong>When:</strong> {{.WhenLabel}}</p>{{end}}
-                {{if .IsPendingTask}}<p><strong>Type:</strong> Pending task</p>{{else if .IsRecentEvent}}<p><strong>Type:</strong> Runtime event</p>{{end}}
-                {{if .Status}}<p><strong>Status:</strong> {{.Status}}</p>{{end}}
-                {{if .Level}}<p><strong>Level:</strong> {{.Level}}</p>{{end}}
-                {{if .Detail}}<p>{{.Detail}}</p>{{end}}
-                {{if .Skill}}<p><strong>Skill:</strong> {{.Skill}}</p>{{end}}
-                {{if .TargetAgent}}<p><strong>Target agent:</strong> {{.TargetAgent}}</p>{{end}}
-                {{if .TaskID}}<p><strong>Task:</strong> {{.TaskID}}</p>{{end}}
-                {{if .ChildRequestID}}<p><strong>Child request:</strong> {{.ChildRequestID}}</p>{{end}}
-                {{if .Repo}}<p><strong>Repo:</strong> {{.Repo}}</p>{{end}}
-                {{if .LogPath}}<p><strong>Log:</strong> {{.LogPath}}</p>{{end}}
-                {{if .ExpiresAtLabel}}<p><strong>Expires:</strong> {{.ExpiresAtLabel}}</p>{{end}}
-              </div>
-            </article>
-            {{end}}
+                <div class="runtime-event-card-body" data-runtime-event-body hidden>
+                  {{if .WhenLabel}}<p><strong>When:</strong> {{.WhenLabel}}</p>{{end}}
+                  {{if .IsPendingTask}}<p><strong>Type:</strong> Pending task</p>{{else if .IsRecentEvent}}<p><strong>Type:</strong> Runtime event</p>{{end}}
+                  {{if .Status}}<p><strong>Status:</strong> {{.Status}}</p>{{end}}
+                  {{if .Level}}<p><strong>Level:</strong> {{.Level}}</p>{{end}}
+                  {{if .Detail}}<p>{{.Detail}}</p>{{end}}
+                  {{if .Skill}}<p><strong>Skill:</strong> {{.Skill}}</p>{{end}}
+                  {{if .TargetAgent}}<p><strong>Target agent:</strong> {{.TargetAgent}}</p>{{end}}
+                  {{if .TaskID}}<p><strong>Task:</strong> {{.TaskID}}</p>{{end}}
+                  {{if .ChildRequestID}}<p><strong>Child request:</strong> {{.ChildRequestID}}</p>{{end}}
+                  {{if .Repo}}<p><strong>Repo:</strong> {{.Repo}}</p>{{end}}
+                  {{if .LogPath}}<p><strong>Log:</strong> {{.LogPath}}</p>{{end}}
+                  {{if .ExpiresAtLabel}}<p><strong>Expires:</strong> {{.ExpiresAtLabel}}</p>{{end}}
+                </div>
+              </article>
+              {{end}}
+            </div>
+            <p id="activity-feed-empty" class="empty" {{if .ActivityFeed}}hidden{{end}}>Pending tasks and runtime events will appear here.</p>
           </div>
-          <p id="activity-feed-empty" class="empty" {{if .ActivityFeed}}hidden{{end}}>Pending tasks and runtime events will appear here.</p>
         </article>
       </section>
     </div>
