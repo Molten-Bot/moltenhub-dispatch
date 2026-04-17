@@ -859,6 +859,12 @@ func TestHandleIndexShowsBoundProfileState(t *testing.T) {
 	if !strings.Contains(body, `class="panel prompt-wrap dispatch-workbench-panel brand-login-card-shell min-h-[220px] overflow-visible rounded-2xl border border-hub-border bg-hub-panel`) {
 		t.Fatalf("expected manual dispatch panel shell to reuse studio prompt-wrap layout, body=%s", body)
 	}
+	if !strings.Contains(body, `class="panel prompt-wrap brand-login-card-shell min-h-[220px] overflow-visible rounded-2xl border border-hub-border bg-hub-panel`) {
+		t.Fatalf("expected activity panel shell to reuse studio prompt-wrap layout, body=%s", body)
+	}
+	if !strings.Contains(body, `<h2 class="panel-section-title">Recent Activity</h2>`) {
+		t.Fatalf("expected activity panel heading to reuse studio section title treatment, body=%s", body)
+	}
 	statusIndex := strings.Index(body, `id="dispatch-submit-status"`)
 	actionsIndex := strings.Index(body, `class="prompt-actions-end"`)
 	if statusIndex == -1 || actionsIndex == -1 || statusIndex > actionsIndex {
@@ -2355,6 +2361,12 @@ func TestHandleIndexRendersInteractiveOnboardingFlowForUnboundSession(t *testing
 	}
 	if !strings.Contains(body, `id="onboarding-profile-fields" class="stack onboarding-profile-fields" hidden`) {
 		t.Fatalf("expected onboarding profile fields to stay hidden in existing-agent mode, body=%s", body)
+	}
+	if !strings.Contains(body, `class="panel prompt-wrap dispatch-gate-panel brand-login-card-shell min-h-[220px] overflow-visible rounded-2xl border border-hub-border bg-hub-panel`) {
+		t.Fatalf("expected onboarding summary card to reuse studio prompt-wrap shell, body=%s", body)
+	}
+	if !strings.Contains(body, `<h2 class="panel-section-title">Connect this dispatcher to Molten Hub</h2>`) {
+		t.Fatalf("expected onboarding summary card heading to reuse studio section title treatment, body=%s", body)
 	}
 	if !strings.Contains(body, `id="onboarding-steps"`) {
 		t.Fatalf("expected onboarding steps container, body=%s", body)

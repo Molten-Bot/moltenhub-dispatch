@@ -127,14 +127,14 @@
 
     {{if not .State.Session.AgentToken}}
     <section class="grid two-up">
-      <article class="panel dispatch-gate-panel brand-login-card-shell">
-        <div class="dispatch-panel-header">
-          <div class="dispatch-panel-header-copy">
+      <article class="panel prompt-wrap dispatch-gate-panel brand-login-card-shell min-h-[220px] overflow-visible rounded-2xl border border-hub-border bg-hub-panel bg-[linear-gradient(170deg,rgba(255,255,255,0.02),rgba(255,255,255,0.01))]">
+        <div class="panel-header prompt-titlebar flex items-center justify-between gap-2 border-b border-hub-border px-3.5 py-3 text-[0.92rem] font-semibold uppercase tracking-[0.03em]">
+          <div class="panel-header-copy">
             <p class="eyebrow dispatch-panel-eyebrow">1. Onboarding</p>
-            <h2>Connect this dispatcher to Molten Hub</h2>
+            <h2 class="panel-section-title">Connect this dispatcher to Molten Hub</h2>
           </div>
         </div>
-        <p class="empty">Choose a runtime region, reuse an existing agent token or bind a new dispatcher identity, then save the agent profile once to finish setup.</p>
+        <p class="empty panel-section-copy">Choose a runtime region, reuse an existing agent token or bind a new dispatcher identity, then save the agent profile once to finish setup.</p>
       </article>
     </section>
     {{end}}
@@ -227,13 +227,13 @@
       </section>
 
       <section class="grid">
-        <article class="panel">
-          <div class="dispatch-panel-header">
-            <div class="dispatch-panel-header-copy">
+        <article class="panel prompt-wrap brand-login-card-shell min-h-[220px] overflow-visible rounded-2xl border border-hub-border bg-hub-panel bg-[linear-gradient(170deg,rgba(255,255,255,0.02),rgba(255,255,255,0.01))]">
+          <div class="panel-header prompt-titlebar flex items-center justify-between gap-2 border-b border-hub-border px-3.5 py-3 text-[0.92rem] font-semibold uppercase tracking-[0.03em]">
+            <div class="panel-header-copy">
               <p class="eyebrow dispatch-panel-eyebrow">Activity</p>
-              <h2>Recent Activity</h2>
+              <h2 class="panel-section-title">Recent Activity</h2>
             </div>
-            <p class="dispatch-panel-copy">Pending tasks and runtime events in one time-sorted feed.</p>
+            <p class="dispatch-panel-copy panel-section-copy">Pending tasks and runtime events in one time-sorted feed.</p>
           </div>
           <div id="activity-feed-list" class="list" {{if not .ActivityFeed}}hidden{{end}}>
             {{range .ActivityFeed}}
