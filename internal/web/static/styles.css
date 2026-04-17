@@ -3638,12 +3638,14 @@ p,
 }
 
 .manual-dispatch-selection-grid {
-  align-items: stretch;
+  align-items: flex-start;
 }
 
 .manual-dispatch-target-fieldset {
   display: grid;
   gap: 10px;
+  flex: 1 1 320px;
+  min-width: 280px;
 }
 
 .manual-dispatch-target-fieldset.prompt-field {
@@ -3651,7 +3653,8 @@ p,
 }
 
 .manual-dispatch-skill-field {
-  align-self: start;
+  flex: 0 1 clamp(240px, 28%, 340px);
+  min-width: clamp(220px, 24vw, 320px);
 }
 
 .manual-dispatch-skill-hint {

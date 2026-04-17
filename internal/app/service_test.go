@@ -3000,14 +3000,22 @@ func TestRunHubLoopMarksPresenceWebsocketWhenRealtimeConnects(t *testing.T) {
 	}()
 
 	sawWebsocketPresence := false
+	sawHTTPLongPresence := false
 	deadline := time.After(2 * time.Second)
 	for {
 		if len(fake.updateMetadataCalls) > 0 {
-			presence, _ := fake.updateMetadataCalls[len(fake.updateMetadataCalls)-1].Metadata["presence"].(map[string]any)
-			if presence["transport"] == ConnectionTransportWebSocket {
-				sawWebsocketPresence = true
+			for _, call := range fake.updateMetadataCalls {
+				presence, _ := call.Metadata["presence"].(map[string]any)
+				switch presence["transport"] {
+				case ConnectionTransportWebSocket:
+					sawWebsocketPresence = true
+				case ConnectionTransportHTTPLong:
+					if sawWebsocketPresence {
+						sawHTTPLongPresence = true
+					}
+				}
 			}
-			if sawWebsocketPresence && presence["transport"] == ConnectionTransportHTTPLong {
+			if sawWebsocketPresence && sawHTTPLongPresence {
 				break
 			}
 		}
