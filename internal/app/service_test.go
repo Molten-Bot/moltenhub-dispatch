@@ -2999,11 +2999,15 @@ func TestRunHubLoopMarksPresenceWebsocketWhenRealtimeConnects(t *testing.T) {
 		service.RunHubLoop(ctx)
 	}()
 
+	sawWebsocketPresence := false
 	deadline := time.After(2 * time.Second)
 	for {
 		if len(fake.updateMetadataCalls) > 0 {
 			presence, _ := fake.updateMetadataCalls[len(fake.updateMetadataCalls)-1].Metadata["presence"].(map[string]any)
 			if presence["transport"] == ConnectionTransportWebSocket {
+				sawWebsocketPresence = true
+			}
+			if sawWebsocketPresence && presence["transport"] == ConnectionTransportHTTPLong {
 				break
 			}
 		}
@@ -3011,7 +3015,7 @@ func TestRunHubLoopMarksPresenceWebsocketWhenRealtimeConnects(t *testing.T) {
 		case <-deadline:
 			cancel()
 			<-done
-			t.Fatalf("expected websocket presence sync, got %#v", fake.updateMetadataCalls)
+			t.Fatalf("expected websocket presence sync followed by http long-poll fallback sync, got %#v", fake.updateMetadataCalls)
 		case <-time.After(10 * time.Millisecond):
 		}
 	}
