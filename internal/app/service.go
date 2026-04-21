@@ -948,6 +948,9 @@ func (s *Service) handleSkillResult(ctx context.Context, message hub.PullRespons
 			return err
 		}
 	}
+	if err := s.logTaskEvent("info", "Task completed", completionSummary(pending), pending); err != nil {
+		return err
+	}
 	return s.removePendingTask(pending.ChildRequestID)
 }
 
@@ -1229,7 +1232,10 @@ func (s *Service) failUIRequest(ctx context.Context, state AppState, task Pendin
 
 func (s *Service) handleTaskFailure(ctx context.Context, state AppState, pending PendingTask, report failureReport) error {
 	var combinedErr error
-	if pending.CallerAgentUUID != "" || pending.CallerAgentURI != "" {
+	if err := s.logTaskEvent("error", "Task failed", formatFailureSummary(report), pending); err != nil {
+		combinedErr = errors.Join(combinedErr, fmt.Errorf("append failure event: %w", err))
+	}
+	if hasCallerTarget(pending) {
 		if err := s.publishFailureToCaller(ctx, state, pending, report); err != nil {
 			combinedErr = errors.Join(combinedErr, fmt.Errorf("publish failure response: %w", err))
 		}
@@ -1583,6 +1589,14 @@ func formatFailureSummary(report failureReport) string {
 	return fmt.Sprintf("%s | detail=%v", report.Error, report.Detail)
 }
 
+func completionSummary(task PendingTask) string {
+	skillName := strings.TrimSpace(task.OriginalSkillName)
+	if skillName == "" {
+		return "Downstream agent reported success."
+	}
+	return fmt.Sprintf("%s completed successfully.", skillName)
+}
+
 func failureFields(report failureReport, message string, detail any) map[string]any {
 	return map[string]any{
 		"status":       "failed",
@@ -1600,11 +1614,14 @@ func callerFailurePayload(report failureReport, logPaths []string) map[string]an
 	if failureDetailIsEmpty(detail) {
 		detail = report.Error
 	}
-	payload := failureFields(report, callerFailureError(report), detail)
+	summary := callerFailureError(report)
+	payload := failureFields(report, summary, detail)
 	payload["ok"] = false
 	payload["failure"] = true
 	payload["error_details"] = detail
 	payload["log_paths"] = logPaths
+	payload["Failure"] = summary
+	payload["Error details"] = detail
 	return payload
 }
 
