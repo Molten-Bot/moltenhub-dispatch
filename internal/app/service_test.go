@@ -1351,6 +1351,96 @@ func TestHandleDownstreamFailureFinalizesImmediately(t *testing.T) {
 	if len(state.PendingTasks) != 0 {
 		t.Fatalf("expected pending task to clear after failure handling, got %d", len(state.PendingTasks))
 	}
+	if len(state.RecentEvents) == 0 {
+		t.Fatal("expected downstream failure to append recent activity event")
+	}
+	if got := state.RecentEvents[0].Title; got != "Task failed" {
+		t.Fatalf("expected failure event title, got %#v", got)
+	}
+	if got := state.RecentEvents[0].Level; got != "error" {
+		t.Fatalf("expected failure event level, got %#v", got)
+	}
+	if got := state.RecentEvents[0].TaskID; got != "task-1" {
+		t.Fatalf("expected failure event task id, got %#v", got)
+	}
+}
+
+func TestHandleDownstreamSuccessAppendsCompletionRecentActivity(t *testing.T) {
+	t.Parallel()
+
+	service, fake := newTestService(t)
+	err := service.store.Update(func(state *AppState) error {
+		state.Session.AgentToken = "agent-token"
+		state.Session.AgentUUID = "self-uuid"
+		state.Session.AgentURI = "molten://dispatch/self"
+		state.PendingTasks = []PendingTask{
+			{
+				ID:                     "task-1",
+				ParentRequestID:        "parent-req",
+				ChildRequestID:         "child-req",
+				OriginalSkillName:      "run_task",
+				TargetAgentDisplayName: "Worker A",
+				TargetAgentEmoji:       "🛠",
+				TargetAgentUUID:        "worker-uuid",
+				CallerAgentUUID:        "caller-uuid",
+				CallerRequestID:        "parent-req",
+				LogPath:                filepath.Join(service.settings.DataDir, "logs", "task-1.log"),
+				CreatedAt:              time.Now().Add(-time.Minute),
+				ExpiresAt:              time.Now().Add(time.Minute),
+			},
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("seed store: %v", err)
+	}
+
+	if err := service.handleInboundMessage(context.Background(), hub.PullResponse{
+		DeliveryID: "delivery-1",
+		OpenClawMessage: hub.OpenClawMessage{
+			Type:      "skill_result",
+			SkillName: "run_task",
+			RequestID: "child-req",
+			ReplyTo:   "parent-req",
+			OK:        boolPtr(true),
+			Payload:   map[string]any{"status": "succeeded"},
+		},
+	}); err != nil {
+		t.Fatalf("handle inbound success message: %v", err)
+	}
+
+	if len(fake.publishCalls) != 1 {
+		t.Fatalf("expected successful result to be forwarded to caller, got %d publishes", len(fake.publishCalls))
+	}
+	if got := fake.publishCalls[0].Message.RequestID; got != "parent-req" {
+		t.Fatalf("expected forwarded result request id parent-req, got %q", got)
+	}
+	if got := fake.publishCalls[0].Message.ReplyTo; got != "parent-req" {
+		t.Fatalf("expected forwarded result reply_to parent-req, got %q", got)
+	}
+
+	state := service.store.Snapshot()
+	if len(state.PendingTasks) != 0 {
+		t.Fatalf("expected pending task to clear after success handling, got %d", len(state.PendingTasks))
+	}
+	if len(state.RecentEvents) == 0 {
+		t.Fatal("expected downstream success to append recent activity event")
+	}
+	if got := state.RecentEvents[0].Title; got != "Task completed" {
+		t.Fatalf("expected completion event title, got %#v", got)
+	}
+	if got := state.RecentEvents[0].Level; got != "info" {
+		t.Fatalf("expected completion event level, got %#v", got)
+	}
+	if got := state.RecentEvents[0].OriginalSkillName; got != "run_task" {
+		t.Fatalf("expected completion event skill name, got %#v", got)
+	}
+	if got := state.RecentEvents[0].TargetAgentDisplayName; got != "Worker A" {
+		t.Fatalf("expected completion event target display name, got %#v", got)
+	}
+	if got := state.RecentEvents[0].TargetAgentEmoji; got != "🛠" {
+		t.Fatalf("expected completion event target emoji, got %#v", got)
+	}
 }
 
 func TestExpirePendingTasksFinalizesTimedOutTaskImmediately(t *testing.T) {
@@ -2320,12 +2410,22 @@ func TestCallerFailurePayloadIncludesExplicitFailureDetails(t *testing.T) {
 	if payload["failure"] != true {
 		t.Fatalf("expected failure marker, got %#v", payload["failure"])
 	}
+	if got := payload["Failure"]; got != "Task failed: downstream worker returned a non-zero exit code. Error: panic: boom" {
+		t.Fatalf("unexpected Failure field payload: %#v", got)
+	}
 	detail, ok := payload["error_details"].(map[string]any)
 	if !ok {
 		t.Fatalf("unexpected error_details type: %T", payload["error_details"])
 	}
 	if detail["stderr"] != "stacktrace" || detail["exit_code"] != 1 {
 		t.Fatalf("unexpected error_details payload: %#v", detail)
+	}
+	errorDetailsField, ok := payload["Error details"].(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected Error details field type: %T", payload["Error details"])
+	}
+	if errorDetailsField["stderr"] != "stacktrace" || errorDetailsField["exit_code"] != 1 {
+		t.Fatalf("unexpected Error details field payload: %#v", errorDetailsField)
 	}
 }
 
