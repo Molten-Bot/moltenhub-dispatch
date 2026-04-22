@@ -185,6 +185,22 @@
   box-sizing: border-box;
 }
 
+.lucide,
+[data-lucide] {
+  display: block;
+  width: 1em;
+  height: 1em;
+}
+
+.lucide {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: var(--lucide-stroke-width, 1.8);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
 html,
 body {
   min-height: 100%;
@@ -890,7 +906,9 @@ body .right-col.prompt-collapsed.task-list-hidden {
   background: var(--glass-icon-bg);
 }
 
-.prompt-mode-link-icon svg {
+.prompt-mode-link-icon svg,
+.prompt-mode-link-icon .lucide,
+.prompt-mode-link-icon [data-lucide] {
   display: block;
   width: 15px;
   height: 15px;
@@ -1016,7 +1034,9 @@ body .right-col.prompt-collapsed.task-list-hidden {
     transform 180ms ease;
 }
 
-.hub-profile-button svg {
+.hub-profile-button svg,
+.hub-profile-button .lucide,
+.hub-profile-button [data-lucide] {
   width: 15px;
   height: 15px;
   display: block;
@@ -2678,7 +2698,9 @@ select.prompt-control {
   transition: transform 180ms ease;
 }
 
-.hub-emoji-picker-toggle-caret svg {
+.hub-emoji-picker-toggle-caret svg,
+.hub-emoji-picker-toggle-caret .lucide,
+.hub-emoji-picker-toggle-caret [data-lucide] {
   width: 14px;
   height: 14px;
   display: block;
@@ -2999,7 +3021,9 @@ select.prompt-control {
   box-shadow: var(--glass-icon-shadow);
 }
 
-.theme-toggle.theme-toggle-dock .theme-toggle-icon svg {
+.theme-toggle.theme-toggle-dock .theme-toggle-icon svg,
+.theme-toggle.theme-toggle-dock .theme-toggle-icon .lucide,
+.theme-toggle.theme-toggle-dock .theme-toggle-icon [data-lucide] {
   display: block;
   width: 15px;
   height: 15px;
@@ -4338,7 +4362,9 @@ body.settings-modal-open {
   border-radius: 999px;
 }
 
-.connected-agents-refresh-icon-button svg {
+.connected-agents-refresh-icon-button svg,
+.connected-agents-refresh-icon-button .lucide,
+.connected-agents-refresh-icon-button [data-lucide] {
   width: 18px;
   height: 18px;
   fill: none;
@@ -4572,6 +4598,27 @@ body.settings-modal-open {
 
 .runtime-event-card-header h3 {
   margin: 0;
+}
+
+.runtime-event-card-title-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.runtime-event-card-title-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--meta);
+}
+
+.runtime-event-card-title-icon-sending {
+  color: var(--running);
+}
+
+.runtime-event-card-title-icon-queued {
+  color: var(--accent);
 }
 
 .runtime-event-card-subtitle {
