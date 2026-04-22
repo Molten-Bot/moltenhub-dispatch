@@ -2052,7 +2052,10 @@ func TestHandleStylesEnsuresHiddenModalBackdropsStayHidden(t *testing.T) {
 		t.Fatalf("expected dispatch workbench panel to disable extra chrome so it matches the studio shell, body=%s", body)
 	}
 	if !strings.Contains(body, `#dispatch-submit-status:empty {`) {
-		t.Fatalf("expected empty dispatch submit status to collapse so the footer buttons stay flush, body=%s", body)
+		t.Fatalf("expected empty dispatch submit status override for flush footer alignment, body=%s", body)
+	}
+	if !strings.Contains(body, `visibility: hidden;`) {
+		t.Fatalf("expected empty dispatch submit status to preserve row height while hiding copy, body=%s", body)
 	}
 	if !strings.Contains(body, `gap: 10px;`) {
 		t.Fatalf("expected spacing between clear and dispatch actions, body=%s", body)
