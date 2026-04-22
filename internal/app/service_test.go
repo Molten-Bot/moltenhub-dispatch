@@ -2557,6 +2557,22 @@ func TestCallerFailurePayloadIncludesExplicitFailureDetails(t *testing.T) {
 	}
 }
 
+func TestCallerFailurePayloadFallsBackToFailureSummaryWhenDetailMissing(t *testing.T) {
+	t.Parallel()
+
+	payload := callerFailurePayload(failureReport{}, nil)
+
+	if got := payload["Failure:"]; got != "Task failed." {
+		t.Fatalf("unexpected fallback Failure: payload: %#v", got)
+	}
+	if got := payload["Error details:"]; got != "Task failed." {
+		t.Fatalf("unexpected fallback Error details: payload: %#v", got)
+	}
+	if got := payload["error_details"]; got != "Task failed." {
+		t.Fatalf("unexpected fallback error_details payload: %#v", got)
+	}
+}
+
 func TestCallerFailureErrorIncludesExplicitFailureSummary(t *testing.T) {
 	t.Parallel()
 

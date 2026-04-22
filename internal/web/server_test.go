@@ -1711,6 +1711,15 @@ func TestHandleIndexIncludesPollingHooksForQueueAndActivity(t *testing.T) {
 	if !strings.Contains(body, `const expanded = activityFeedExpandedKeys.has(activityKey);`) {
 		t.Fatalf("expected activity feed refresh to reuse expanded cards, body=%s", body)
 	}
+	if !strings.Contains(body, `card.dataset.runtimeEventLaneKey = laneKey;`) {
+		t.Fatalf("expected grouped activity cards to record lane identity, body=%s", body)
+	}
+	if !strings.Contains(body, `if (trimmedString(sibling.dataset.runtimeEventLaneKey) !== laneKey) {`) {
+		t.Fatalf("expected runtime event expansion to stay scoped to same lane, body=%s", body)
+	}
+	if !strings.Contains(body, `setRuntimeEventCardExpanded(sibling, true)`) {
+		t.Fatalf("expected opening one activity card to reveal sibling cards in same lane, body=%s", body)
+	}
 	if !strings.Contains(body, `activityFeedExpandedKeys = nextExpandedKeys;`) {
 		t.Fatalf("expected activity feed refresh to persist open-card state, body=%s", body)
 	}
@@ -2089,6 +2098,9 @@ func TestHandleStylesEnsuresHiddenModalBackdropsStayHidden(t *testing.T) {
 	}
 	if !strings.Contains(body, `grid-auto-flow: column;`) {
 		t.Fatalf("expected activity feed lanes to stack cards horizontally, body=%s", body)
+	}
+	if !strings.Contains(body, `align-items: start;`) {
+		t.Fatalf("expected horizontal activity lanes to avoid stretching collapsed cards, body=%s", body)
 	}
 	if !strings.Contains(body, `overflow-x: auto;`) {
 		t.Fatalf("expected horizontal activity lanes to support scrolling, body=%s", body)
