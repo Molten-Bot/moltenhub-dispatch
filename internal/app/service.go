@@ -1659,10 +1659,13 @@ func failureFields(report failureReport, message string, detail any) map[string]
 
 func callerFailurePayload(report failureReport, logPaths []string) map[string]any {
 	detail := report.Detail
+	summary := callerFailureError(report)
 	if failureDetailIsEmpty(detail) {
 		detail = report.Error
 	}
-	summary := callerFailureError(report)
+	if failureDetailIsEmpty(detail) {
+		detail = summary
+	}
 	payload := failureFields(report, summary, detail)
 	payload["ok"] = false
 	payload["failure"] = true

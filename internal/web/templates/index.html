@@ -865,20 +865,32 @@
         toggle.textContent = nextExpanded ? "Minimize" : "Open";
       };
 
+      const setRuntimeEventCardExpanded = (card, expanded) => {
+        if (!(card instanceof HTMLElement)) {
+          return false;
+        }
+        const toggle = card.querySelector("[data-runtime-event-toggle]");
+        const body = card.querySelector("[data-runtime-event-body]");
+        if (!(toggle instanceof HTMLButtonElement) || !(body instanceof HTMLElement)) {
+          return false;
+        }
+        const nextExpanded = Boolean(expanded);
+        toggle.setAttribute("aria-expanded", nextExpanded ? "true" : "false");
+        syncRuntimeEventToggleButton(toggle, nextExpanded);
+        body.hidden = !nextExpanded;
+        return true;
+      };
+
       const bindRuntimeEventCard = (card) => {
         if (!(card instanceof HTMLElement)) {
           return;
         }
         const toggle = card.querySelector("[data-runtime-event-toggle]");
-        const body = card.querySelector("[data-runtime-event-body]");
-        if (!(toggle instanceof HTMLButtonElement) || !(body instanceof HTMLElement)) {
+        if (!(toggle instanceof HTMLButtonElement)) {
           return;
         }
         const setExpanded = (expanded) => {
-          const nextExpanded = Boolean(expanded);
-          toggle.setAttribute("aria-expanded", nextExpanded ? "true" : "false");
-          syncRuntimeEventToggleButton(toggle, nextExpanded);
-          body.hidden = !nextExpanded;
+          setRuntimeEventCardExpanded(card, expanded);
         };
         toggle.addEventListener("click", () => {
           const expanded = toggle.getAttribute("aria-expanded") === "true";
@@ -890,9 +902,31 @@
           }
           if (nextExpanded) {
             activityFeedExpandedKeys.add(activityKey);
+          } else {
+            activityFeedExpandedKeys.delete(activityKey);
+          }
+          if (!nextExpanded) {
             return;
           }
-          activityFeedExpandedKeys.delete(activityKey);
+          const laneKey = trimmedString(card.dataset.runtimeEventLaneKey);
+          if (laneKey === "" || !(activityFeedList instanceof HTMLElement)) {
+            return;
+          }
+          activityFeedList.querySelectorAll("[data-runtime-event-card]").forEach((sibling) => {
+            if (!(sibling instanceof HTMLElement) || sibling === card) {
+              return;
+            }
+            if (trimmedString(sibling.dataset.runtimeEventLaneKey) !== laneKey) {
+              return;
+            }
+            if (!setRuntimeEventCardExpanded(sibling, true)) {
+              return;
+            }
+            const siblingActivityKey = trimmedString(sibling.dataset.runtimeEventKey);
+            if (siblingActivityKey !== "") {
+              activityFeedExpandedKeys.add(siblingActivityKey);
+            }
+          });
         });
         setExpanded(toggle.getAttribute("aria-expanded") === "true");
       };
@@ -950,6 +984,10 @@
         const activityKey = trimmedString(options && options.activityKey);
         if (activityKey !== "") {
           card.dataset.runtimeEventKey = activityKey;
+        }
+        const laneKey = trimmedString(options && options.laneKey);
+        if (laneKey !== "") {
+          card.dataset.runtimeEventLaneKey = laneKey;
         }
 
         const header = document.createElement("div");
@@ -2852,6 +2890,7 @@
               } : null,
               iconName: item.iconName,
               iconClass: item.iconClass,
+              laneKey: lane.key,
               activityKey,
               expanded,
             });
