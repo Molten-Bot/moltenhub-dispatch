@@ -2179,6 +2179,124 @@ func TestHandleSkillRequestAcceptsSelectedTaskAliasAndInlinePayload(t *testing.T
 	}
 }
 
+func TestHandleSkillRequestDecodesJSONStringTaskPayloadWhenFormatJSON(t *testing.T) {
+	t.Parallel()
+
+	service, fake := newTestService(t)
+	err := service.store.Update(func(state *AppState) error {
+		state.Session.AgentToken = "agent-token"
+		state.ConnectedAgents = []ConnectedAgent{testConnectedAgent("worker-a", "Worker A", "worker-uuid", Skill{Name: "code_for_me"})}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("seed store: %v", err)
+	}
+
+	message := hub.PullResponse{
+		DeliveryID:    "delivery-1",
+		FromAgentUUID: "caller-uuid",
+		OpenClawMessage: hub.OpenClawMessage{
+			Type:      "skill_request",
+			SkillName: dispatchSkillName,
+			RequestID: "parent-req",
+			Payload: map[string]any{
+				"target_agent_ref": "worker-a",
+				"skill_name":       "code_for_me",
+				"payload":          `{"prompt":"` + testDispatchPrompt + `","retry":true}`,
+				"payload_format":   "json",
+			},
+		},
+	}
+
+	if err := service.handleInboundMessage(context.Background(), message); err != nil {
+		t.Fatalf("handle inbound message: %v", err)
+	}
+
+	if len(fake.publishCalls) != 1 {
+		t.Fatalf("expected one downstream publish call, got %d", len(fake.publishCalls))
+	}
+	if got := fake.publishCalls[0].ToAgentUUID; got != "worker-uuid" {
+		t.Fatalf("unexpected target agent UUID: %#v", fake.publishCalls[0])
+	}
+	if got := fake.publishCalls[0].Message.PayloadFormat; got != "json" {
+		t.Fatalf("expected downstream payload format json, got %q", got)
+	}
+
+	payload, ok := fake.publishCalls[0].Message.Payload.(map[string]any)
+	if !ok {
+		t.Fatalf("expected downstream payload map, got %T", fake.publishCalls[0].Message.Payload)
+	}
+	if got := payload["prompt"]; got != testDispatchPrompt {
+		t.Fatalf("unexpected downstream prompt payload: %#v", payload)
+	}
+	if got := payload["retry"]; got != true {
+		t.Fatalf("unexpected downstream retry payload: %#v", payload)
+	}
+	if _, exists := payload["input"]; exists {
+		t.Fatalf("did not expect wrapped markdown input field for JSON payload: %#v", payload)
+	}
+}
+
+func TestHandleSkillRequestRejectsInvalidJSONStringTaskPayloadWhenFormatJSON(t *testing.T) {
+	t.Parallel()
+
+	service, fake := newTestService(t)
+	err := service.store.Update(func(state *AppState) error {
+		state.Session.AgentToken = "agent-token"
+		state.ConnectedAgents = []ConnectedAgent{testConnectedAgent("worker-a", "Worker A", "worker-uuid", Skill{Name: "code_for_me"})}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("seed store: %v", err)
+	}
+
+	message := hub.PullResponse{
+		DeliveryID:    "delivery-1",
+		FromAgentUUID: "caller-uuid",
+		OpenClawMessage: hub.OpenClawMessage{
+			Type:      "skill_request",
+			SkillName: dispatchSkillName,
+			RequestID: "parent-req",
+			Payload: map[string]any{
+				"target_agent_ref": "worker-a",
+				"skill_name":       "code_for_me",
+				"payload":          `{"prompt":`,
+				"payload_format":   "json",
+			},
+		},
+	}
+
+	if err := service.handleInboundMessage(context.Background(), message); err != nil {
+		t.Fatalf("handle inbound message: %v", err)
+	}
+
+	if len(fake.publishCalls) != 1 {
+		t.Fatalf("expected one caller failure publish, got %d", len(fake.publishCalls))
+	}
+	if got := fake.publishCalls[0].ToAgentUUID; got != "caller-uuid" {
+		t.Fatalf("expected caller failure target UUID, got %q", got)
+	}
+	if got := fake.publishCalls[0].Message.Type; got != "skill_result" {
+		t.Fatalf("expected skill_result failure response, got %q", got)
+	}
+
+	payload, ok := fake.publishCalls[0].Message.Payload.(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected caller failure payload type: %T", fake.publishCalls[0].Message.Payload)
+	}
+	if got := payload["status"]; got != "failed" {
+		t.Fatalf("expected failed status payload, got %#v", got)
+	}
+	summary, ok := payload["Failure:"].(string)
+	if !ok || !strings.Contains(summary, "Failed to decode the dispatch request payload.") {
+		t.Fatalf("unexpected Failure: payload field: %#v", payload["Failure:"])
+	}
+	detail, ok := payload["Error details:"].(string)
+	if !ok || !strings.Contains(detail, "payload_format json requires valid JSON payload") {
+		t.Fatalf("unexpected Error details: payload field: %#v", payload["Error details:"])
+	}
+}
+
 func TestHandleSkillRequestAcceptsSelectedAgentAndSkillAliases(t *testing.T) {
 	t.Parallel()
 

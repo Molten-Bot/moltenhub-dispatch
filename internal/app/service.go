@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -876,9 +877,21 @@ func (s *Service) handleSkillRequest(ctx context.Context, message hub.PullRespon
 		SkillName:      payload.RequestedSkillName(),
 		Repo:           payload.Repo,
 		LogPaths:       payload.LogPaths,
-		Payload:        payload.TaskPayload(),
 		PayloadFormat:  payload.PayloadFormat,
 	}
+	taskPayload, err := payload.TaskPayload()
+	if err != nil {
+		pending := PendingTask{
+			ID:              NewID("task"),
+			ParentRequestID: message.OpenClawMessage.RequestID,
+			CallerAgentUUID: callerAgentUUID,
+			CallerAgentURI:  callerAgentURI,
+			CallerRequestID: message.OpenClawMessage.RequestID,
+			LogPath:         filepath.Join(s.settings.DataDir, "logs", NewID("task")+".log"),
+		}
+		return s.handleTaskFailure(ctx, state, pending, failureFromError("Failed to decode the dispatch request payload.", fmt.Errorf("decode dispatch payload: %w", err)))
+	}
+	req.Payload = taskPayload
 	target, req, err := s.prepareDispatchRequest(state, req)
 	if err != nil {
 		pending := PendingTask{
@@ -1408,25 +1421,24 @@ func (p dispatchPayload) RequestedSkillName() string {
 	return support.FirstNonEmptyString(p.SkillName, p.SelectedTask)
 }
 
-func (p dispatchPayload) TaskPayload() any {
+func (p dispatchPayload) TaskPayload() (any, error) {
+	var taskPayload any
 	if p.Payload != nil {
-		return p.Payload
-	}
-	if len(p.raw) == 0 {
-		return nil
+		taskPayload = p.Payload
+	} else if len(p.raw) > 0 {
+		inline := make(map[string]any)
+		for key, value := range p.raw {
+			if dispatchPayloadControlField(key) {
+				continue
+			}
+			inline[key] = value
+		}
+		if len(inline) > 0 {
+			taskPayload = inline
+		}
 	}
 
-	inline := make(map[string]any)
-	for key, value := range p.raw {
-		if dispatchPayloadControlField(key) {
-			continue
-		}
-		inline[key] = value
-	}
-	if len(inline) == 0 {
-		return nil
-	}
-	return inline
+	return normalizeDispatchTaskPayload(taskPayload, p.PayloadFormat)
 }
 
 func dispatchPayloadControlField(key string) bool {
@@ -1452,6 +1464,42 @@ func dispatchPayloadControlField(key string) bool {
 	default:
 		return false
 	}
+}
+
+func normalizeDispatchTaskPayload(payload any, payloadFormat string) (any, error) {
+	if !strings.EqualFold(strings.TrimSpace(payloadFormat), "json") {
+		return payload, nil
+	}
+	switch typed := payload.(type) {
+	case string:
+		return decodeJSONPayloadString(typed)
+	case []byte:
+		return decodeJSONPayloadBytes(typed)
+	case json.RawMessage:
+		return decodeJSONPayloadBytes(typed)
+	default:
+		return payload, nil
+	}
+}
+
+func decodeJSONPayloadString(raw string) (any, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	return decodeJSONPayloadBytes([]byte(raw))
+}
+
+func decodeJSONPayloadBytes(raw []byte) (any, error) {
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	var decoded any
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		return nil, fmt.Errorf("payload_format json requires valid JSON payload: %w", err)
+	}
+	return decoded, nil
 }
 
 func normalizePayload(payload any, repo string, logPaths []string) map[string]any {
