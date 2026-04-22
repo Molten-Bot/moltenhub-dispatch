@@ -4586,26 +4586,31 @@ body.settings-modal-open {
   font-size: 0.92rem;
 }
 
+.runtime-event-card {
+  padding: 10px 11px;
+}
+
 .runtime-event-card-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px;
 }
 
 .runtime-event-card-header h3 {
   margin: 0;
+  line-height: 1.2;
 }
 
 .runtime-event-card-title-row {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 9px;
 }
 
 .runtime-event-card-title-icon {
-  width: 14px;
-  height: 14px;
+  width: 18px;
+  height: 18px;
   flex-shrink: 0;
   color: var(--meta);
 }
@@ -4619,9 +4624,10 @@ body.settings-modal-open {
 }
 
 .runtime-event-card-subtitle {
-  margin: 6px 0 0;
+  margin: 3px 0 0;
   color: var(--muted);
   font-size: 0.75rem;
+  line-height: 1.2;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -4653,15 +4659,27 @@ body.settings-modal-open {
 }
 
 .runtime-event-card-toggle {
-  padding: 6px 10px;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  padding: 0;
   border: 1px solid color-mix(in srgb, var(--running) 28%, var(--border));
   border-radius: 999px;
   background: color-mix(in srgb, var(--surface-glass-strong) 88%, rgba(10, 132, 255, 0.08));
   color: var(--running);
-  font-size: 0.72rem;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.runtime-event-card-toggle-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.runtime-event-card-toggle.is-expanded .runtime-event-card-toggle-icon {
+  width: 13px;
+  height: 13px;
 }
 
 .runtime-event-card-toggle:hover,
@@ -4672,6 +4690,11 @@ body.settings-modal-open {
 
 .runtime-event-card-body[hidden] {
   display: none;
+}
+
+.runtime-event-card-body p {
+  margin-top: 4px;
+  line-height: 1.3;
 }
 
 .card p {
@@ -5534,8 +5557,8 @@ html.night .runtime-option:focus-within {
 }
 
 .runtime-event-card-header {
-  align-items: flex-start;
-  gap: 14px;
+  align-items: center;
+  gap: 10px;
 }
 
 .runtime-event-card-toggle {

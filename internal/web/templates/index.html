@@ -256,7 +256,16 @@
                     </p>
                     {{end}}
                   </div>
-                  <button type="button" class="runtime-event-card-toggle" data-runtime-event-toggle aria-expanded="false">Open</button>
+                  <button
+                    type="button"
+                    class="runtime-event-card-toggle"
+                    data-runtime-event-toggle
+                    aria-expanded="false"
+                    aria-label="Open details"
+                    title="Open details"
+                  >
+                    <i data-lucide="maximize-2" class="runtime-event-card-toggle-icon" aria-hidden="true"></i>
+                  </button>
                 </div>
                 <div class="runtime-event-card-body" data-runtime-event-body hidden>
                   {{if .WhenLabel}}<p><strong>When:</strong> {{.WhenLabel}}</p>{{end}}
@@ -822,6 +831,28 @@
         themeToggleButton.setAttribute("aria-label", `Switch theme. Currently: ${currentLabel}`);
       };
 
+      const syncRuntimeEventToggleButton = (toggle, expanded) => {
+        if (!(toggle instanceof HTMLButtonElement)) {
+          return;
+        }
+        const nextExpanded = Boolean(expanded);
+        const actionLabel = nextExpanded ? "Minimize details" : "Open details";
+        toggle.setAttribute("aria-label", actionLabel);
+        toggle.title = actionLabel;
+        toggle.classList.toggle("is-expanded", nextExpanded);
+        toggle.replaceChildren();
+        const icon = createLucideIconPlaceholder(
+          nextExpanded ? "minimize-2" : "maximize-2",
+          "runtime-event-card-toggle-icon"
+        );
+        if (icon) {
+          toggle.appendChild(icon);
+          hydrateLucideIcons(toggle);
+          return;
+        }
+        toggle.textContent = nextExpanded ? "Minimize" : "Open";
+      };
+
       const bindRuntimeEventCard = (card) => {
         if (!(card instanceof HTMLElement)) {
           return;
@@ -834,7 +865,7 @@
         const setExpanded = (expanded) => {
           const nextExpanded = Boolean(expanded);
           toggle.setAttribute("aria-expanded", nextExpanded ? "true" : "false");
-          toggle.textContent = nextExpanded ? "Close" : "Open";
+          syncRuntimeEventToggleButton(toggle, nextExpanded);
           body.hidden = !nextExpanded;
         };
         toggle.addEventListener("click", () => {
@@ -948,8 +979,9 @@
         toggle.type = "button";
         toggle.className = "runtime-event-card-toggle";
         toggle.setAttribute("data-runtime-event-toggle", "");
-        toggle.setAttribute("aria-expanded", Boolean(options && options.expanded) ? "true" : "false");
-        toggle.textContent = "Open";
+        const startsExpanded = Boolean(options && options.expanded);
+        toggle.setAttribute("aria-expanded", startsExpanded ? "true" : "false");
+        syncRuntimeEventToggleButton(toggle, startsExpanded);
         header.appendChild(toggle);
 
         const body = document.createElement("div");
