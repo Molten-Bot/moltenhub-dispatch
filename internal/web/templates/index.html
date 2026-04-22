@@ -219,8 +219,20 @@
               <div class="prompt-actions manual-dispatch-actions">
                 <p id="dispatch-submit-status" class="connected-agents-refresh-status submit-status" aria-live="polite"></p>
                 <div class="prompt-actions-end">
-                  <button id="dispatch-task-clear" type="button" class="prompt-action-button prompt-action-clear">Clear</button>
-                  <button id="dispatch-task-submit" type="submit" class="dispatch-task-button prompt-action-button">Dispatch</button>
+                  <button
+                    id="dispatch-task-clear"
+                    type="button"
+                    class="prompt-action-button prompt-action-clear"
+                    aria-label="Clear payload"
+                    title="Clear payload"
+                  >
+                    <i data-lucide="x" class="dispatch-task-clear-icon" aria-hidden="true"></i>
+                    <span class="sr-only">Clear payload</span>
+                  </button>
+                  <button id="dispatch-task-submit" type="submit" class="dispatch-task-button prompt-action-button">
+                    <i data-lucide="send" class="dispatch-task-submit-icon" aria-hidden="true"></i>
+                    <span data-dispatch-submit-label>Dispatch</span>
+                  </button>
                 </div>
               </div>
             </div>
@@ -1954,6 +1966,11 @@
           return;
         }
         dispatchTaskSubmit.disabled = busy;
+        const dispatchLabel = dispatchTaskSubmit.querySelector("[data-dispatch-submit-label]");
+        if (dispatchLabel instanceof HTMLElement) {
+          dispatchLabel.textContent = busy ? "Dispatching..." : "Dispatch";
+          return;
+        }
         dispatchTaskSubmit.textContent = busy ? "Dispatching..." : "Dispatch";
       };
 

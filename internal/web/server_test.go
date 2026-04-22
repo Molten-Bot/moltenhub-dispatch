@@ -873,6 +873,9 @@ func TestHandleIndexShowsBoundProfileState(t *testing.T) {
 	if !strings.Contains(body, `id="dispatch-task-clear"`) {
 		t.Fatalf("expected manual dispatch clear button beside submit, body=%s", body)
 	}
+	if !strings.Contains(body, `aria-label="Clear payload"`) || !strings.Contains(body, `data-lucide="x"`) {
+		t.Fatalf("expected clear action to render as icon-only button with accessible label, body=%s", body)
+	}
 	if strings.Contains(body, `name="repo"`) {
 		t.Fatalf("did not expect manual dispatch repo field, body=%s", body)
 	}
@@ -927,8 +930,11 @@ func TestHandleIndexShowsBoundProfileState(t *testing.T) {
 	if !strings.Contains(body, `id="dispatch-task-submit"`) {
 		t.Fatalf("expected dispatch submit button id for async submit handling, body=%s", body)
 	}
-	if !strings.Contains(body, `>Dispatch</button>`) {
-		t.Fatalf("expected dispatch submit button label to be Dispatch, body=%s", body)
+	if !strings.Contains(body, `data-lucide="send"`) || !strings.Contains(body, `data-dispatch-submit-label`) {
+		t.Fatalf("expected dispatch submit button to render a leading send icon and label span, body=%s", body)
+	}
+	if !strings.Contains(body, `data-dispatch-submit-label>Dispatch</span>`) {
+		t.Fatalf("expected dispatch submit label text to remain Dispatch, body=%s", body)
 	}
 	if !strings.Contains(body, `const dispatchTaskClear = document.getElementById("dispatch-task-clear");`) {
 		t.Fatalf("expected clear button hook in client script, body=%s", body)
@@ -948,8 +954,14 @@ func TestHandleIndexShowsBoundProfileState(t *testing.T) {
 	if !strings.Contains(body, `dispatchTaskClear.disabled = busy;`) {
 		t.Fatalf("expected dispatch busy state to disable the clear action, body=%s", body)
 	}
+	if !strings.Contains(body, `const dispatchLabel = dispatchTaskSubmit.querySelector("[data-dispatch-submit-label]");`) {
+		t.Fatalf("expected dispatch submit busy helper to target the inline label span first, body=%s", body)
+	}
+	if !strings.Contains(body, `dispatchLabel.textContent = busy ? "Dispatching..." : "Dispatch";`) {
+		t.Fatalf("expected dispatch submit busy helper to update icon-button label copy, body=%s", body)
+	}
 	if !strings.Contains(body, `dispatchTaskSubmit.textContent = busy ? "Dispatching..." : "Dispatch";`) {
-		t.Fatalf("expected dispatch submit reset label to stay aligned with the rendered button copy, body=%s", body)
+		t.Fatalf("expected dispatch submit busy helper fallback for non-icon markup, body=%s", body)
 	}
 	if !strings.Contains(body, `id="dispatch-submit-status"`) || !strings.Contains(body, `connected-agents-refresh-status`) {
 		t.Fatalf("expected inline dispatch status region for async dispatch feedback, body=%s", body)
@@ -1851,8 +1863,8 @@ func TestHandleIndexKeepsRecentEventsClosedByDefault(t *testing.T) {
 	if !strings.Contains(body, `class="card runtime-event-card" data-runtime-event-card`) {
 		t.Fatalf("expected recent event cards to use collapsible card class, body=%s", body)
 	}
-	if !strings.Contains(body, `data-runtime-event-toggle aria-expanded="false">Open</button>`) {
-		t.Fatalf("expected info event toggle to render closed by default, body=%s", body)
+	if !strings.Contains(body, `data-runtime-event-toggle`) || !strings.Contains(body, `data-lucide="maximize-2"`) {
+		t.Fatalf("expected info event toggle icon to render in collapsed open state by default, body=%s", body)
 	}
 	if !strings.Contains(body, `class="runtime-event-card-body" data-runtime-event-body hidden`) {
 		t.Fatalf("expected info event body to render hidden by default, body=%s", body)
@@ -1863,8 +1875,8 @@ func TestHandleIndexKeepsRecentEventsClosedByDefault(t *testing.T) {
 	if !strings.Contains(body, "run_task • Task dispatched") {
 		t.Fatalf("expected recent event card to render skill + title subtitle in consolidated feed, body=%s", body)
 	}
-	if strings.Contains(body, `data-runtime-event-toggle aria-expanded="true">Close</button>`) {
-		t.Fatalf("expected all runtime event toggles to render closed by default, body=%s", body)
+	if strings.Contains(body, `data-runtime-event-toggle aria-expanded="true"`) {
+		t.Fatalf("expected all runtime event toggles to render collapsed by default, body=%s", body)
 	}
 	if !strings.Contains(body, `const runtimeEventCards = Array.from(document.querySelectorAll("[data-runtime-event-card]"));`) {
 		t.Fatalf("expected runtime event JS collection hook, body=%s", body)
@@ -1872,8 +1884,14 @@ func TestHandleIndexKeepsRecentEventsClosedByDefault(t *testing.T) {
 	if !strings.Contains(body, `const initRuntimeEventCards = () => {`) {
 		t.Fatalf("expected runtime event initialization helper, body=%s", body)
 	}
-	if !strings.Contains(body, `toggle.textContent = nextExpanded ? "Close" : "Open";`) {
-		t.Fatalf("expected runtime event toggle button copy to swap between open and close, body=%s", body)
+	if !strings.Contains(body, `const syncRuntimeEventToggleButton = (toggle, expanded) => {`) {
+		t.Fatalf("expected runtime event toggle icon sync helper, body=%s", body)
+	}
+	if !strings.Contains(body, `nextExpanded ? "minimize-2" : "maximize-2"`) {
+		t.Fatalf("expected runtime event toggle to switch between maximize/minimize icons, body=%s", body)
+	}
+	if !strings.Contains(body, `syncRuntimeEventToggleButton(toggle, nextExpanded);`) {
+		t.Fatalf("expected runtime event toggle visuals to update inside expansion handler, body=%s", body)
 	}
 	if !strings.Contains(body, `initRuntimeEventCards();`) {
 		t.Fatalf("expected runtime event toggle initialization on page load, body=%s", body)
@@ -1920,14 +1938,14 @@ func TestHandleIndexKeepsPendingTasksClosedByDefault(t *testing.T) {
 	if !strings.Contains(body, `class="card runtime-event-card" data-runtime-event-card`) {
 		t.Fatalf("expected pending task cards to use collapsible card class in consolidated feed, body=%s", body)
 	}
-	if !strings.Contains(body, `data-runtime-event-toggle aria-expanded="false">Open</button>`) {
-		t.Fatalf("expected pending task toggle to render closed by default in consolidated feed, body=%s", body)
+	if !strings.Contains(body, `data-runtime-event-toggle`) || !strings.Contains(body, `data-lucide="maximize-2"`) {
+		t.Fatalf("expected pending task toggle icon to render collapsed open state by default in consolidated feed, body=%s", body)
 	}
 	if !strings.Contains(body, `class="runtime-event-card-body" data-runtime-event-body hidden`) {
 		t.Fatalf("expected pending task body to render hidden by default in consolidated feed, body=%s", body)
 	}
-	if strings.Contains(body, `data-runtime-event-toggle aria-expanded="true">Close</button>`) {
-		t.Fatalf("expected pending task toggles to render closed by default, body=%s", body)
+	if strings.Contains(body, `data-runtime-event-toggle aria-expanded="true"`) {
+		t.Fatalf("expected pending task toggles to render collapsed by default, body=%s", body)
 	}
 	if !strings.Contains(body, "Sending") {
 		t.Fatalf("expected pending task status label to render sending state, body=%s", body)

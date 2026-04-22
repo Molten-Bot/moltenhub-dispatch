@@ -3656,8 +3656,9 @@ p,
 
 .manual-dispatch-actions {
   display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
+  gap: 8px;
+  flex-wrap: nowrap;
+  align-items: stretch;
   justify-content: flex-end;
 }
 
@@ -3699,10 +3700,14 @@ p,
 }
 
 .manual-dispatch-payload-validation {
-  min-height: 1.3em;
+  min-height: 0;
   color: var(--meta);
   font-size: 0.78rem;
   line-height: 1.35;
+}
+
+.manual-dispatch-payload-validation:empty {
+  display: none;
 }
 
 .manual-dispatch-payload-validation.is-error {
@@ -4402,7 +4407,7 @@ body.settings-modal-open {
 }
 
 #dispatch-submit-status:empty {
-  display: none;
+  visibility: hidden;
 }
 
 .connected-agents-refresh-status.is-error {
@@ -4587,14 +4592,14 @@ body.settings-modal-open {
 }
 
 .runtime-event-card {
-  padding: 10px 11px;
+  padding: 8px 10px;
 }
 
 .runtime-event-card-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
 }
 
 .runtime-event-card-header h3 {
@@ -4609,8 +4614,8 @@ body.settings-modal-open {
 }
 
 .runtime-event-card-title-icon {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   flex-shrink: 0;
   color: var(--meta);
 }
@@ -4624,7 +4629,7 @@ body.settings-modal-open {
 }
 
 .runtime-event-card-subtitle {
-  margin: 3px 0 0;
+  margin: 2px 0 0;
   color: var(--muted);
   font-size: 0.75rem;
   line-height: 1.2;
@@ -4659,9 +4664,9 @@ body.settings-modal-open {
 }
 
 .runtime-event-card-toggle {
-  width: 28px;
-  min-width: 28px;
-  height: 28px;
+  width: 25px;
+  min-width: 25px;
+  height: 25px;
   padding: 0;
   border: 1px solid color-mix(in srgb, var(--running) 28%, var(--border));
   border-radius: 999px;
@@ -4673,13 +4678,13 @@ body.settings-modal-open {
 }
 
 .runtime-event-card-toggle-icon {
-  width: 14px;
-  height: 14px;
+  width: 13px;
+  height: 13px;
 }
 
 .runtime-event-card-toggle.is-expanded .runtime-event-card-toggle-icon {
-  width: 13px;
-  height: 13px;
+  width: 12px;
+  height: 12px;
 }
 
 .runtime-event-card-toggle:hover,
@@ -4693,8 +4698,8 @@ body.settings-modal-open {
 }
 
 .runtime-event-card-body p {
-  margin-top: 4px;
-  line-height: 1.3;
+  margin-top: 3px;
+  line-height: 1.25;
 }
 
 .card p {
@@ -5316,13 +5321,47 @@ legend {
 
 .manual-dispatch-actions {
   margin-top: 0;
-  align-items: center;
+  align-items: stretch;
   justify-content: flex-end;
 }
 
 .manual-dispatch-actions .connected-agents-refresh-status {
   flex: 1 1 auto;
   min-width: 0;
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  line-height: 1.2;
+}
+
+#skill-payload-field {
+  gap: 4px;
+}
+
+#dispatch-task-clear {
+  width: 38px;
+  min-width: 38px;
+  min-inline-size: 38px;
+  min-height: 38px;
+  padding: 0;
+  flex: 0 0 auto;
+}
+
+#dispatch-task-clear .dispatch-task-clear-icon {
+  width: 14px;
+  height: 14px;
+}
+
+#dispatch-task-submit {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+#dispatch-task-submit .dispatch-task-submit-icon {
+  width: 14px;
+  height: 14px;
 }
 
 .dispatch-workbench-panel {
@@ -5558,7 +5597,7 @@ html.night .runtime-option:focus-within {
 
 .runtime-event-card-header {
   align-items: center;
-  gap: 10px;
+  gap: 6px;
 }
 
 .runtime-event-card-toggle {
