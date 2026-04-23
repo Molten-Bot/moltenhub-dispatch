@@ -2428,8 +2428,8 @@ func TestHandleIndexRendersInteractiveOnboardingFlowForUnboundSession(t *testing
 	if !strings.Contains(body, `id="onboarding-modal-backdrop"`) {
 		t.Fatalf("expected onboarding modal for unbound session, body=%s", body)
 	}
-	if !strings.Contains(body, `id="onboarding-existing-agent-toggle"`) || !strings.Contains(body, `id="onboarding-new-agent-toggle"`) {
-		t.Fatalf("expected existing/new agent mode toggles in onboarding modal, body=%s", body)
+	if strings.Contains(body, `id="onboarding-existing-agent-toggle"`) || strings.Contains(body, `id="onboarding-new-agent-toggle"`) {
+		t.Fatalf("expected onboarding modal to remove existing/new agent mode toggles, body=%s", body)
 	}
 	if !strings.Contains(body, `name="hub_region"`) {
 		t.Fatalf("expected runtime region selector in onboarding modal, body=%s", body)
@@ -2470,8 +2470,8 @@ func TestHandleIndexRendersInteractiveOnboardingFlowForUnboundSession(t *testing
 	if !strings.Contains(body, `id="onboarding-token-input" type="text"`) {
 		t.Fatalf("expected onboarding token input to render as text field, body=%s", body)
 	}
-	if !strings.Contains(body, "Existing agents use an agent token. New agents use a bind token") {
-		t.Fatalf("expected onboarding summary to describe explicit mode behavior, body=%s", body)
+	if !strings.Contains(body, "Connect this runtime using an existing agent token for the selected region.") {
+		t.Fatalf("expected onboarding summary to describe existing-agent token flow, body=%s", body)
 	}
 	if !strings.Contains(body, "Paste an existing agent token to reconnect this runtime while preserving the current Molten Hub identity.") {
 		t.Fatalf("expected onboarding token hint for existing-agent mode, body=%s", body)
