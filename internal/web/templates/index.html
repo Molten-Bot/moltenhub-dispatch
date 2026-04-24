@@ -171,7 +171,7 @@
                   {{$presenceLabel := connectedAgentPresenceLabel .}}
                   <button
                     type="button"
-                    class="connected-agent-card connected-agent-card-button"
+                    class="connected-agent-card connected-agent-card-button {{if eq $presenceStatus "online"}}is-online{{else}}is-offline{{end}}"
                     data-connected-agent-target-ref="{{if .AgentID}}{{.AgentID}}{{else if .Handle}}{{.Handle}}{{else if .URI}}{{.URI}}{{else if .AgentUUID}}{{.AgentUUID}}{{end}}"
                     data-connected-agent-refs="{{if .AgentID}}{{.AgentID}}{{end}}{{if .Handle}}{{if .AgentID}}&#10;{{end}}{{.Handle}}{{end}}{{if .URI}}{{if or .AgentID .Handle}}&#10;{{end}}{{.URI}}{{end}}{{if .AgentUUID}}{{if or .AgentID .Handle .URI}}&#10;{{end}}{{.AgentUUID}}{{end}}"
                     data-connected-agent-display="{{$displayName}}"
@@ -185,14 +185,14 @@
                         </h3>
                       </div>
                       <div class="connected-agent-card-meta">
+                        {{if eq $presenceStatus "online"}}
                         <span
-                          class="connected-agent-presence {{if eq $presenceStatus "online"}}is-online{{else}}is-offline{{end}}"
+                          class="connected-agent-presence is-online"
                           title="{{$presenceLabel}}"
                           aria-label="{{$presenceLabel}}"
                           role="img"
-                        >
-                          <i data-lucide="{{if eq $presenceStatus "online"}}wifi{{else}}wifi-off{{end}}" class="connected-agent-presence-icon" aria-hidden="true"></i>
-                        </span>
+                        ></span>
+                        {{end}}
                       </div>
                     </div>
                   </button>
@@ -2535,10 +2535,11 @@
       };
 
       const buildConnectedAgentCard = (agent, selectable = false) => {
+        const presenceStatus = connectedAgentPresenceStatus(agent);
         const card = document.createElement(selectable ? "button" : "article");
         card.className = selectable
-          ? "connected-agent-card connected-agent-card-button"
-          : "connected-agent-card";
+          ? `connected-agent-card connected-agent-card-button ${presenceStatus === "online" ? "is-online" : "is-offline"}`
+          : `connected-agent-card ${presenceStatus === "online" ? "is-online" : "is-offline"}`;
 
         if (selectable) {
           card.type = "button";
@@ -2581,22 +2582,14 @@
         const meta = document.createElement("div");
         meta.className = "connected-agent-card-meta";
 
-        const presence = document.createElement("span");
-        const presenceStatus = connectedAgentPresenceStatus(agent);
-        presence.className = `connected-agent-presence ${presenceStatus === "online" ? "is-online" : "is-offline"}`;
-        const presenceLabel = presenceStatus === "online" ? "Online" : "Offline";
-        presence.title = presenceLabel;
-        presence.setAttribute("aria-label", presenceLabel);
-        presence.setAttribute("role", "img");
-
-        const presenceIcon = createLucideIconPlaceholder(
-          presenceStatus === "online" ? "wifi" : "wifi-off",
-          "connected-agent-presence-icon"
-        );
-        if (presenceIcon) {
-          presence.appendChild(presenceIcon);
+        if (presenceStatus === "online") {
+          const presence = document.createElement("span");
+          presence.className = "connected-agent-presence is-online";
+          presence.title = "Online";
+          presence.setAttribute("aria-label", "Online");
+          presence.setAttribute("role", "img");
+          meta.appendChild(presence);
         }
-        meta.appendChild(presence);
 
         cardMain.appendChild(meta);
         card.appendChild(cardMain);
