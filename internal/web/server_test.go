@@ -122,6 +122,7 @@ func (s *stubService) ConsumeFlash() (app.FlashMessage, error) {
 }
 
 func testConnectedAgent(agentID, displayName, agentUUID, uri string, skills ...app.Skill) app.ConnectedAgent {
+	online := true
 	agent := app.ConnectedAgent{
 		AgentID:   agentID,
 		Handle:    agentID,
@@ -130,6 +131,7 @@ func testConnectedAgent(agentID, displayName, agentUUID, uri string, skills ...a
 		Metadata: &hub.AgentMetadata{
 			DisplayName: displayName,
 			Skills:      skillMetadata(skills...),
+			Presence:    &hub.AgentPresence{Ready: &online},
 		},
 	}
 	if displayName == "" && len(skills) == 0 {
@@ -2975,23 +2977,29 @@ func TestHandleIndexRendersConnectedAgentsRefreshPanel(t *testing.T) {
 	if !strings.Contains(body, `id="agent-settings-refresh-connected-agents"`) {
 		t.Fatalf("expected connected agents refresh control in settings modal, body=%s", body)
 	}
-	if !strings.Contains(body, `class="connected-agent-card connected-agent-card-button"`) {
-		t.Fatalf("expected connected agent card layout, body=%s", body)
+	if !strings.Contains(body, `class="connected-agent-card connected-agent-card-button is-online"`) {
+		t.Fatalf("expected connected agent card to render online styling state, body=%s", body)
 	}
 	if !strings.Contains(body, ">Dispatcher<") {
 		t.Fatalf("expected connected agent display name on connected agent cards, body=%s", body)
 	}
+	if !strings.Contains(body, `class="connected-agent-presence is-online"`) {
+		t.Fatalf("expected online presence indicator on connected agent cards, body=%s", body)
+	}
+	if !strings.Contains(body, `title="Online"`) {
+		t.Fatalf("expected online presence tooltip on connected agent cards, body=%s", body)
+	}
 	if strings.Contains(body, `class="connected-agent-secondary"`) {
 		t.Fatalf("did not expect connected-agent secondary handle/id label on cards, body=%s", body)
 	}
-	if !strings.Contains(body, `class="connected-agent-presence is-offline"`) {
-		t.Fatalf("expected offline presence indicator on connected agent cards, body=%s", body)
+	if strings.Contains(body, `class="connected-agent-presence is-offline"`) {
+		t.Fatalf("did not expect offline presence indicator on connected agent cards, body=%s", body)
 	}
-	if !strings.Contains(body, `data-lucide="wifi-off"`) {
-		t.Fatalf("expected Lucide offline connectivity icon on connected agent cards, body=%s", body)
+	if strings.Contains(body, `data-lucide="wifi-off"`) {
+		t.Fatalf("did not expect Lucide offline connectivity icon on connected agent cards, body=%s", body)
 	}
-	if !strings.Contains(body, `title="Offline"`) {
-		t.Fatalf("expected offline presence tooltip on connected agent cards, body=%s", body)
+	if strings.Contains(body, `title="Offline"`) {
+		t.Fatalf("did not expect offline presence tooltip on connected agent cards, body=%s", body)
 	}
 	if strings.Contains(body, ">Offline<") {
 		t.Fatalf("did not expect textual offline badge label on connected agent cards, body=%s", body)
@@ -3194,9 +3202,6 @@ func TestHandleIndexHidesUUIDsAndShowsHubAgentMetadata(t *testing.T) {
 	if !strings.Contains(body, `class="connected-agent-presence is-online"`) {
 		t.Fatalf("expected hub presence indicator to render online status, body=%s", body)
 	}
-	if !strings.Contains(body, `data-lucide="wifi"`) {
-		t.Fatalf("expected hub presence icon to render online connectivity Lucide glyph, body=%s", body)
-	}
 	if !strings.Contains(body, `title="Online"`) {
 		t.Fatalf("expected hub presence indicator tooltip to render online status, body=%s", body)
 	}
@@ -3257,9 +3262,6 @@ func TestHandleIndexRendersHubAgentRootPropertiesFromConnectedAgents(t *testing.
 	}
 	if !strings.Contains(body, `class="connected-agent-presence is-online"`) {
 		t.Fatalf("expected root hub presence indicator to render online status, body=%s", body)
-	}
-	if !strings.Contains(body, `data-lucide="wifi"`) {
-		t.Fatalf("expected root hub presence icon to render online connectivity Lucide glyph, body=%s", body)
 	}
 	if !strings.Contains(body, `title="Online"`) {
 		t.Fatalf("expected root hub presence indicator tooltip to render online status, body=%s", body)
