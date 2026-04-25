@@ -17,6 +17,7 @@ const maxRecentEvents = 40
 const (
 	defaultDataDir                  = ".moltenhub"
 	defaultGoogleAnalyticsMeasureID = "G-BY33RFG2WB"
+	moltenHubRegionEnvVar           = "MOLTEN_HUB_REGION"
 )
 
 type Store struct {
@@ -41,15 +42,12 @@ type persistedSession struct {
 }
 
 func DefaultSettings() Settings {
-	runtime, err := ResolveHubRuntime("", envOrDefault("MOLTENHUB_URL", DefaultHubRuntime().HubURL))
-	if err != nil {
-		runtime = DefaultHubRuntime()
-	}
+	runtime := defaultRuntimeFromEnv()
 	return Settings{
 		ListenAddr:                   envOrDefault("LISTEN_ADDR", ":8080"),
 		HubRegion:                    runtime.ID,
 		HubURL:                       runtime.HubURL,
-		SessionKey:                   envOrDefault("MOLTENHUB_SESSION_KEY", "main"),
+		SessionKey:                   "main",
 		PollInterval:                 2 * time.Second,
 		TaskTimeout:                  5 * time.Minute,
 		DataDir:                      envOrDefault("APP_DATA_DIR", defaultDataDir),
@@ -233,6 +231,10 @@ func NewID(prefix string) string {
 
 func mergeDefaultSettings(settings *Settings, defaults Settings) {
 	runtime, err := ResolveHubRuntime(settings.HubRegion, settings.HubURL)
+	if envRuntime, envErr, ok := runtimeFromEnv(); ok && envErr == nil {
+		runtime = envRuntime
+		err = nil
+	}
 	if err != nil {
 		runtime, err = ResolveHubRuntime(defaults.HubRegion, defaults.HubURL)
 		if err != nil {
@@ -361,6 +363,25 @@ func envValue(key string) (string, bool) {
 		return "", false
 	}
 	return value, true
+}
+
+func defaultRuntimeFromEnv() HubRuntime {
+	if runtime, err, ok := runtimeFromEnv(); ok && err == nil {
+		return runtime
+	}
+	return DefaultHubRuntime()
+}
+
+func runtimeFromEnv() (HubRuntime, error, bool) {
+	region, ok := envValue(moltenHubRegionEnvVar)
+	if !ok {
+		return HubRuntime{}, nil, false
+	}
+	runtime, err := ResolveHubRuntime(region, "")
+	if err != nil {
+		return HubRuntime{}, fmt.Errorf("%s=%q: %w", moltenHubRegionEnvVar, region, err), true
+	}
+	return runtime, nil, true
 }
 
 func applyPersistedConfig(state *AppState, persisted persistedConfig) {

@@ -39,6 +39,27 @@ func TestDefaultSettingsUsesGoogleAnalyticsMeasurementID(t *testing.T) {
 	}
 }
 
+func TestDefaultSettingsUsesRegionEnvOverride(t *testing.T) {
+	t.Setenv(moltenHubRegionEnvVar, HubRegionEU)
+
+	settings := DefaultSettings()
+	if got, want := settings.HubRegion, HubRegionEU; got != want {
+		t.Fatalf("hub_region = %q, want %q", got, want)
+	}
+	if got, want := settings.HubURL, "https://eu.hub.molten.bot"; got != want {
+		t.Fatalf("hub_url = %q, want %q", got, want)
+	}
+}
+
+func TestDefaultSettingsUsesFixedMainSessionKey(t *testing.T) {
+	t.Setenv("MOLTENHUB_SESSION_KEY", "ignored")
+
+	settings := DefaultSettings()
+	if got, want := settings.SessionKey, "main"; got != want {
+		t.Fatalf("session_key = %q, want %q", got, want)
+	}
+}
+
 func TestNewStorePrefersGoogleAnalyticsEnvOverrideOverPersistedSetting(t *testing.T) {
 	t.Setenv("MOLTENHUB_GOOGLE_ANALYTICS_ID", "G-OVERRIDE123")
 
@@ -235,6 +256,35 @@ func TestNewStorePrefersAPPDataDirOverrideOverPersistedSetting(t *testing.T) {
 	state := store.Snapshot()
 	if got, want := state.Settings.DataDir, "/workspace/config"; got != want {
 		t.Fatalf("data_dir = %q, want %q", got, want)
+	}
+}
+
+func TestNewStorePrefersRegionEnvOverrideOverPersistedRuntime(t *testing.T) {
+	t.Setenv(moltenHubRegionEnvVar, HubRegionEU)
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	raw := []byte(`{
+  "settings": {
+    "hub_region": "na",
+    "hub_url": "https://na.hub.molten.bot"
+  }
+}`)
+	if err := os.WriteFile(path, raw, 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	store, err := NewStore(path, DefaultSettings())
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+
+	state := store.Snapshot()
+	if got, want := state.Settings.HubRegion, HubRegionEU; got != want {
+		t.Fatalf("hub_region = %q, want %q", got, want)
+	}
+	if got, want := state.Settings.HubURL, "https://eu.hub.molten.bot"; got != want {
+		t.Fatalf("hub_url = %q, want %q", got, want)
 	}
 }
 

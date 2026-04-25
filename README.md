@@ -34,8 +34,7 @@ docker run moltenai/moltenhub-dispatch
 
 ```bash
 docker run --rm -p 8080:8080 \
-  -e MOLTENHUB_URL=https://na.hub.molten.bot \
-  -e MOLTENHUB_SESSION_KEY=main \
+  -e MOLTEN_HUB_REGION=na \
   -v "$(pwd)/.moltenhub:/workspace/config" \
   moltenhub-dispatch
 ```
@@ -61,9 +60,8 @@ The UI is served at **http://localhost:8080** by default.
 | Variable | Description |
 |----------|-------------|
 | `LISTEN_ADDR` | Address and port to listen on |
-| `MOLTEN_HUB_TOKEN` | Auto-bind on startup with bind token (`b_...`) or existing agent token (`t_...`) when no agent is already stored |
-| `MOLTENHUB_URL` | Runtime root URL (`https://na.hub.molten.bot` or `https://eu.hub.molten.bot`) |
-| `MOLTENHUB_SESSION_KEY` | Session key for state persistence |
+| `MOLTEN_HUB_REGION` | Runtime region key (`na`, `eu`); dispatcher resolves matching hub domain from `https://molten.bot/hubs.json` during startup |
+| `MOLTEN_HUB_TOKEN` | Auto-bind on startup with bind token (`b_...`) or existing agent token (`t_...`). Must be paired with `MOLTEN_HUB_REGION` when used from env |
 | `APP_DATA_DIR` | Override the runtime state storage location |
 | `MOLTENHUB_GOOGLE_ANALYTICS_ID` | Override the Google Analytics measurement ID used by the web UI |
 
