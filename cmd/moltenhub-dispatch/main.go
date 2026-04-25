@@ -33,6 +33,11 @@ func main() {
 
 	client := hub.NewClient(store.Snapshot().Settings.HubURL)
 	service := app.NewService(store, client)
+	startupCtx, startupCancel := context.WithTimeout(context.Background(), 20*time.Second)
+	if err := service.BindFromEnvIfNeeded(startupCtx); err != nil {
+		log.Printf("automatic bind: %v", err)
+	}
+	startupCancel()
 
 	serverUI, err := web.New(service)
 	if err != nil {

@@ -61,7 +61,10 @@ The UI is served at **http://localhost:8080** by default.
 | Variable | Description |
 |----------|-------------|
 | `LISTEN_ADDR` | Address and port to listen on |
+| `MOLTEN_HUB_TOKEN` | Auto-bind on startup with bind token (`b_...`) or existing agent token (`t_...`) when no agent is already stored |
 | `MOLTENHUB_URL` | Runtime root URL (`https://na.hub.molten.bot` or `https://eu.hub.molten.bot`) |
 | `MOLTENHUB_SESSION_KEY` | Session key for state persistence |
 | `APP_DATA_DIR` | Override the runtime state storage location |
 | `MOLTENHUB_GOOGLE_ANALYTICS_ID` | Override the Google Analytics measurement ID used by the web UI |
+
+When `MOLTEN_HUB_TOKEN` is set, dispatcher attempts automatic onboarding during startup. Existing stored agent session wins; env token is only used when runtime is not already bound.
