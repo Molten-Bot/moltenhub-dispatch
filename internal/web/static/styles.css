@@ -973,6 +973,10 @@ body .right-col.prompt-collapsed.task-list-hidden {
   opacity: 1;
 }
 
+.prompt-mode-mobile-label {
+  display: none;
+}
+
 .prompt-mode-divider {
   width: 1px;
   height: 24px;
@@ -5686,6 +5690,103 @@ pre {
 .prompt-mode-link-shell {
   border: 1px solid var(--glass-border);
   background: color-mix(in srgb, var(--glass-icon-bg) 84%, transparent);
+}
+
+@media (max-width: 700px) {
+  :root {
+    --hub-floating-bottom: 0px;
+    --hub-floating-stack-height: calc(4.5rem + env(safe-area-inset-bottom));
+    --hub-studio-dock-gap: 0px;
+  }
+
+  .page-bottom-dock {
+    inset-inline: 0;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    max-width: none;
+    transform: none;
+  }
+
+  .prompt-mode-tabs-dock {
+    width: 100%;
+    max-width: none;
+    justify-content: space-around;
+    gap: 4px;
+    padding: 8px 8px calc(env(safe-area-inset-bottom) + 8px);
+    border: 0;
+    border-top: 1px solid var(--glass-border);
+    border-radius: 0;
+    box-shadow: 0 -2px 14px rgba(0, 0, 0, 0.18);
+    backdrop-filter: blur(60px) saturate(180%);
+    -webkit-backdrop-filter: blur(60px) saturate(180%);
+    overflow: visible;
+  }
+
+  .prompt-mode-link,
+  .theme-toggle.theme-toggle-dock {
+    width: auto;
+    height: auto;
+    min-width: 58px;
+    flex: 1 1 0;
+    flex-direction: column;
+    gap: 4px;
+    padding: 6px 8px;
+    color: var(--foreground);
+  }
+
+  .hub-profile-button {
+    min-height: 0;
+  }
+
+  .prompt-mode-link:hover,
+  .prompt-mode-link:focus-visible,
+  .theme-toggle.theme-toggle-dock:hover,
+  .theme-toggle.theme-toggle-dock:focus-visible {
+    transform: none;
+  }
+
+  .prompt-mode-link:active,
+  .theme-toggle.theme-toggle-dock:active {
+    transform: scale(0.95);
+  }
+
+  .prompt-mode-link:hover .prompt-mode-link-shell {
+    opacity: 0;
+  }
+
+  .prompt-mode-link:focus-visible .prompt-mode-link-shell {
+    opacity: 1;
+  }
+
+  .prompt-mode-link-icon,
+  .theme-toggle.theme-toggle-dock .theme-toggle-icon {
+    width: 32px;
+    height: 32px;
+    flex: 0 0 32px;
+  }
+
+  .prompt-mode-link-line,
+  .prompt-mode-link-tooltip,
+  .prompt-mode-divider {
+    display: none;
+  }
+
+  .prompt-mode-mobile-label {
+    position: relative;
+    z-index: 1;
+    display: block;
+    max-width: 70px;
+    overflow: hidden;
+    color: var(--foreground);
+    font-family: var(--font-family);
+    font-size: 10px;
+    font-weight: var(--font-weight-medium);
+    line-height: 1.2;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 }
 
 @media (max-width: 900px) {

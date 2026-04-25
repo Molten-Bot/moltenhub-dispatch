@@ -1801,17 +1801,26 @@ func TestHandleIndexRendersBottomDockAndSettingsDialogForBoundSession(t *testing
 	if !strings.Contains(body, `id="moltenbot-hub-link"`) || !strings.Contains(body, `<img src="/static/logo.svg" alt="" aria-hidden="true">`) {
 		t.Fatalf("expected molten hub dock link to use bundled logo asset, body=%s", body)
 	}
+	if !strings.Contains(body, `<span class="prompt-mode-mobile-label" aria-hidden="true">Hub</span>`) {
+		t.Fatalf("expected molten hub dock link to expose mobile footer label, body=%s", body)
+	}
 	if !strings.Contains(body, `id="agent-settings-dock-button"`) {
 		t.Fatalf("expected settings dock button, body=%s", body)
 	}
 	if !strings.Contains(body, `class="prompt-mode-link prompt-mode-link-logo hub-profile-button"`) {
 		t.Fatalf("expected settings dock button to render without an active class, body=%s", body)
 	}
+	if !strings.Contains(body, `<span class="prompt-mode-mobile-label" aria-hidden="true">Settings</span>`) {
+		t.Fatalf("expected settings dock button to expose mobile footer label, body=%s", body)
+	}
 	if !strings.Contains(body, `id="theme-toggle"`) {
 		t.Fatalf("expected theme toggle dock button, body=%s", body)
 	}
 	if !strings.Contains(body, `<span class="theme-toggle-icon" id="theme-toggle-icon" aria-hidden="true"></span>`) {
 		t.Fatalf("expected theme toggle icon slot, body=%s", body)
+	}
+	if !strings.Contains(body, `<span class="prompt-mode-mobile-label" aria-hidden="true">Theme</span>`) {
+		t.Fatalf("expected theme toggle to expose mobile footer label, body=%s", body)
 	}
 	if !strings.Contains(body, `<span id="theme-toggle-label">Dark</span>`) {
 		t.Fatalf("expected dark as the initial theme label, body=%s", body)
@@ -2254,6 +2263,15 @@ func TestHandleStylesUsesNeutralDefaultForSettingsDockButton(t *testing.T) {
 	}
 	if !strings.Contains(body, "--hub-content-bottom-padding: calc(var(--hub-floating-bottom) + var(--hub-floating-stack-height) + var(--hub-studio-dock-gap) + 28px);") {
 		t.Fatalf("expected shared dock spacing token from moltenhub-code stylesheet, body=%s", body)
+	}
+	if !strings.Contains(body, ".page-bottom-dock {\n    inset-inline: 0;\n    bottom: 0;\n    left: 0;\n    width: 100%;") {
+		t.Fatalf("expected mobile bottom dock to snap flush to the viewport bottom, body=%s", body)
+	}
+	if !strings.Contains(body, ".prompt-mode-tabs-dock {\n    width: 100%;\n    max-width: none;\n    justify-content: space-around;") {
+		t.Fatalf("expected mobile bottom dock nav to stretch across the viewport, body=%s", body)
+	}
+	if !strings.Contains(body, ".prompt-mode-mobile-label {\n    position: relative;\n    z-index: 1;\n    display: block;") {
+		t.Fatalf("expected mobile bottom dock labels to render under icons, body=%s", body)
 	}
 	if !strings.Contains(body, ".badge.completed {\n  background: var(--good);\n}") {
 		t.Fatalf("expected shared completed badge compatibility selector, body=%s", body)
