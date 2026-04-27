@@ -6,7 +6,10 @@ For more information, see [molten.bot/dispatch](https://molten.bot/dispatch).
 
 ## Docker Run
 ```
-docker run -p 8080:8080 moltenai/moltenhub-dispatch:latest
+docker volume create moltenhub-dispatch-config
+docker run -p 8080:8080 \
+  -v moltenhub-dispatch-config:/workspace/config \
+  moltenai/moltenhub-dispatch:latest
 ```
 
 ---
@@ -40,6 +43,8 @@ docker run --rm -p 8080:8080 \
 ```
 
 The container listens on port `8080` and stores runtime state under `/workspace/config` (declared as `VOLUME ["/workspace/config"]`).
+
+Docker creates an anonymous volume for `/workspace/config` when no volume is specified, but each new container gets a new anonymous volume. Use a named volume or host mount to keep `config.json` and credentials across container recreations. If the container is started with `--rm`, Docker removes the anonymous volume when the container exits.
 
 ---
 
