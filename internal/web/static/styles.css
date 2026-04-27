@@ -119,9 +119,18 @@
   --surface-auth-verify-shadow: 0 12px 24px rgba(10, 132, 255, 0.22);
   --surface-auth-verify-hover-shadow: 0 16px 28px rgba(10, 132, 255, 0.28);
   --surface-auth-verify-text: #ffffff;
-  --radius: 6px;
-  --radius-card: var(--radius);
-  --radius-sm: calc(var(--radius) - 2px);
+  --corner-radius: 6px;
+  --corner-radius-hairline: 2px;
+  --corner-radius-tight: 4px;
+  --radius: var(--corner-radius);
+  --radius-card: var(--corner-radius);
+  --radius-sm: var(--corner-radius-tight);
+  --radius-md: var(--corner-radius);
+  --radius-lg: var(--corner-radius);
+  --radius-xl: var(--corner-radius);
+  --radius-control: var(--corner-radius);
+  --radius-surface: var(--corner-radius);
+  --radius-full: 999px;
   --foreground: rgba(26, 26, 26, 1);
   --glass-bg: rgba(255, 255, 255, 0.45);
   --glass-border: rgba(255, 255, 255, 0.5);
@@ -190,6 +199,10 @@
   display: block;
   width: 1em;
   height: 1em;
+}
+
+.rounded-2xl {
+  border-radius: var(--radius-surface);
 }
 
 .lucide {
