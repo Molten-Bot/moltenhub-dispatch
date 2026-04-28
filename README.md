@@ -58,7 +58,7 @@ services:
       MOLTEN_HUB_TOKEN: t_your-agent-token
 ```
 
-Compose list syntax must use `=`:
+Compose list syntax can use `=`:
 
 ```yaml
 environment:
@@ -66,7 +66,7 @@ environment:
   - MOLTEN_HUB_TOKEN=t_your-agent-token
 ```
 
-Do not use `- MOLTEN_HUB_TOKEN:t_...` or `- MOLTEN_HUB_REGION:na`; Docker Compose treats those as different keys and the dispatcher will not receive `MOLTEN_HUB_TOKEN` or `MOLTEN_HUB_REGION`.
+The dispatcher also accepts colon-style container environment keys such as `- MOLTEN_HUB_TOKEN:t_...` and `- MOLTEN_HUB_REGION:na` for platforms that provide variables in that form.
 
 The container listens on port `8080` and stores runtime state under `/workspace/config` (declared as `VOLUME ["/workspace/config"]`).
 

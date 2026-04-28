@@ -360,9 +360,29 @@ func envOrDefault(key, fallback string) string {
 func envValue(key string) (string, bool) {
 	value := strings.TrimSpace(os.Getenv(key))
 	if value == "" {
-		return "", false
+		return colonEnvValue(key)
 	}
 	return value, true
+}
+
+func colonEnvValue(key string) (string, bool) {
+	prefix := key + ":"
+	for _, entry := range os.Environ() {
+		if !strings.HasPrefix(entry, prefix) {
+			continue
+		}
+		value := strings.TrimPrefix(entry, prefix)
+		if beforeEquals, _, found := strings.Cut(value, "="); found {
+			if trimmed := strings.TrimSpace(beforeEquals); trimmed != "" {
+				return trimmed, true
+			}
+			value = strings.TrimPrefix(value, beforeEquals+"=")
+		}
+		if value = strings.TrimSpace(value); value != "" {
+			return value, true
+		}
+	}
+	return "", false
 }
 
 func defaultRuntimeFromEnv() HubRuntime {
