@@ -1964,10 +1964,10 @@ func TestHandleIndexRendersBottomDockAndSettingsDialogForBoundSession(t *testing
 	if !strings.Contains(body, `const themeToggleButton = document.getElementById("theme-toggle");`) {
 		t.Fatalf("expected theme toggle JS hook, body=%s", body)
 	}
-	if !strings.Contains(body, `const THEME_MODES = ["light", "dark", "night"];`) || !strings.Contains(body, `const DEFAULT_THEME_MODE = "dark";`) {
+	if !strings.Contains(body, `const THEME_MODES = ["light", "dark", "night", "pink"];`) || !strings.Contains(body, `const DEFAULT_THEME_MODE = "dark";`) {
 		t.Fatalf("expected theme cycle constants, body=%s", body)
 	}
-	if !strings.Contains(body, `const THEME_ICONS = {`) {
+	if !strings.Contains(body, `const THEME_ICONS = {`) || !strings.Contains(body, `pink: "heart",`) {
 		t.Fatalf("expected theme icon map for toggle button, body=%s", body)
 	}
 	if !strings.Contains(body, `const initAppearanceControls = () => {`) || !strings.Contains(body, `applyThemeMode(loadThemeMode(), false);`) {
@@ -2382,11 +2382,57 @@ func TestHandleStylesUsesNeutralDefaultForSettingsDockButton(t *testing.T) {
 	if !strings.Contains(body, ".prompt-mode-mobile-label {\n    position: relative;\n    z-index: 1;\n    display: block;") {
 		t.Fatalf("expected mobile bottom dock labels to render under icons, body=%s", body)
 	}
+	if !strings.Contains(body, `/* Selectable pink theme. */`) || !strings.Contains(body, `html.pink {`) {
+		t.Fatalf("expected pink palette to be available as its own selectable theme, body=%s", body)
+	}
+	if !strings.Contains(body, `html.dark {`) || !strings.Contains(body, `--body-linear: linear-gradient(180deg, #0d1424, #0a1120 58%, #09101d);`) {
+		t.Fatalf("expected existing dark theme to remain available separately from pink theme, body=%s", body)
+	}
 	if !strings.Contains(body, ".badge.completed {\n  background: var(--good);\n}") {
 		t.Fatalf("expected shared completed badge compatibility selector, body=%s", body)
 	}
 	if !strings.Contains(body, ".task-result.completed {\n  color: var(--surface-success);\n  background: rgba(43, 182, 115, 0.1);\n}") {
 		t.Fatalf("expected shared completed task result compatibility selector, body=%s", body)
+	}
+}
+
+func TestHandleStylesKeepsMoltenHubLogoUnfiltered(t *testing.T) {
+	t.Parallel()
+
+	server, err := New(&stubService{
+		state: app.AppState{
+			Settings: app.DefaultSettings(),
+		},
+	})
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/styles.css", nil)
+	rec := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 response, got %d", rec.Code)
+	}
+	if !strings.Contains(body, "#moltenbot-hub-link img {\n  filter: none;") {
+		t.Fatalf("expected bundled molten hub logo to avoid theme filters, body=%s", body)
+	}
+}
+
+func TestBundledLogoUsesOriginalFill(t *testing.T) {
+	t.Parallel()
+
+	data, err := os.ReadFile("static/logo.svg")
+	if err != nil {
+		t.Fatalf("read logo.svg: %v", err)
+	}
+
+	content := string(data)
+	if !strings.Contains(content, `fill="#0091b0"`) || !strings.Contains(content, `data-originalfillcolor="#7b61ff"`) {
+		t.Fatalf("expected bundled logo to keep original colors, content=%s", content)
 	}
 }
 

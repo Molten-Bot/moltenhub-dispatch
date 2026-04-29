@@ -490,7 +490,7 @@
       const googleAnalyticsMeasurementID = String(window.__hubAnalyticsMeasurementID || "").trim();
 
       const THEME_KEY = "hubui.theme";
-      const THEME_MODES = ["light", "dark", "night"];
+      const THEME_MODES = ["light", "dark", "night", "pink"];
       const DEFAULT_THEME_MODE = "dark";
       const CONNECTED_AGENTS_REFRESH_INTERVAL_MS = 30000;
       const CONNECTED_AGENTS_REFRESH_TICK_MS = 250;
@@ -860,6 +860,7 @@
         light: "sun",
         dark: "moon",
         night: "star",
+        pink: "heart",
       };
 
       const syncThemeToggle = (theme) => {
@@ -1133,7 +1134,7 @@
       const applyThemeMode = (theme, persist) => {
         const normalized = THEME_MODES.includes(theme) ? theme : DEFAULT_THEME_MODE;
         const root = document.documentElement;
-        root.classList.remove("light", "dark", "night");
+        root.classList.remove("light", "dark", "night", "pink");
         root.classList.add(normalized);
         root.setAttribute("data-theme", normalized);
         syncThemeToggle(normalized);
