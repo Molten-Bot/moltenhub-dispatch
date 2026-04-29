@@ -1927,6 +1927,164 @@ func TestDispatchFromUIInfersDefaultSkillForTargetAgent(t *testing.T) {
 	}
 }
 
+func TestDispatchFromUISchedulesMessageWithoutImmediatePublish(t *testing.T) {
+	t.Parallel()
+
+	service, fake := newTestService(t)
+	worker := testConnectedAgent("worker-a", "Worker A", "worker-uuid", Skill{Name: "run_task"})
+	err := service.store.Update(func(state *AppState) error {
+		state.Session.AgentToken = "agent-token"
+		state.ConnectedAgents = []ConnectedAgent{worker}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("seed store: %v", err)
+	}
+
+	runAt := time.Now().UTC().Add(time.Hour)
+	task, err := service.DispatchFromUI(context.Background(), DispatchRequest{
+		RequestID:      "ui-req",
+		TargetAgentRef: "worker-a",
+		SkillName:      "run_task",
+		Payload:        map[string]any{"input": "scheduled work"},
+		PayloadFormat:  "json",
+		ScheduledAt:    runAt,
+		Frequency:      15 * time.Minute,
+	})
+	if err != nil {
+		t.Fatalf("schedule dispatch from ui: %v", err)
+	}
+
+	if task.Status != ScheduledMessageStatusActive {
+		t.Fatalf("expected scheduled task status, got %#v", task.Status)
+	}
+	if len(fake.publishCalls) != 0 {
+		t.Fatalf("expected no immediate publish, got %d", len(fake.publishCalls))
+	}
+	state := service.store.Snapshot()
+	if len(state.ScheduledMessages) != 1 {
+		t.Fatalf("expected one scheduled message, got %d", len(state.ScheduledMessages))
+	}
+	if got := state.ScheduledMessages[0].Frequency; got != 15*time.Minute {
+		t.Fatalf("unexpected frequency: %v", got)
+	}
+	if got := state.ScheduledMessages[0].TargetAgentUUID; got != "worker-uuid" {
+		t.Fatalf("unexpected scheduled target: %#v", state.ScheduledMessages[0])
+	}
+}
+
+func TestProcessDueScheduledMessagesPublishesAndAdvancesRecurringSchedule(t *testing.T) {
+	t.Parallel()
+
+	service, fake := newTestService(t)
+	worker := testConnectedAgent("worker-a", "Worker A", "worker-uuid", Skill{Name: "run_task"})
+	err := service.store.Update(func(state *AppState) error {
+		state.Session.AgentToken = "agent-token"
+		state.ConnectedAgents = []ConnectedAgent{worker}
+		state.ScheduledMessages = []ScheduledMessage{
+			{
+				ID:                    "schedule-1",
+				Status:                ScheduledMessageStatusActive,
+				ParentRequestID:       "parent-req",
+				OriginalSkillName:     "run_task",
+				TargetAgentRef:        "worker-a",
+				TargetAgentUUID:       "worker-uuid",
+				CallerAgentUUID:       "caller-uuid",
+				CallerRequestID:       "parent-req",
+				NextRunAt:             time.Now().UTC().Add(-time.Minute),
+				Frequency:             10 * time.Minute,
+				DispatchPayload:       map[string]any{"input": "scheduled work"},
+				DispatchPayloadFormat: "json",
+			},
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("seed store: %v", err)
+	}
+
+	if err := service.processDueScheduledMessages(context.Background()); err != nil {
+		t.Fatalf("process scheduled messages: %v", err)
+	}
+
+	if len(fake.publishCalls) != 1 {
+		t.Fatalf("expected one scheduled publish, got %d", len(fake.publishCalls))
+	}
+	if got := fake.publishCalls[0].ToAgentUUID; got != "worker-uuid" {
+		t.Fatalf("unexpected publish target: %#v", fake.publishCalls[0])
+	}
+	if got := fake.publishCalls[0].Message.SkillName; got != "run_task" {
+		t.Fatalf("unexpected scheduled skill: %q", got)
+	}
+	state := service.store.Snapshot()
+	if len(state.ScheduledMessages) != 1 {
+		t.Fatalf("expected recurring schedule to remain, got %d", len(state.ScheduledMessages))
+	}
+	if !state.ScheduledMessages[0].NextRunAt.After(time.Now().UTC()) {
+		t.Fatalf("expected next run to advance, got %s", state.ScheduledMessages[0].NextRunAt)
+	}
+	if len(state.PendingTasks) != 1 {
+		t.Fatalf("expected pending task for scheduled dispatch, got %d", len(state.PendingTasks))
+	}
+}
+
+func TestHandleSkillRequestSchedulesRecurringMessageAndAcknowledgesCaller(t *testing.T) {
+	t.Parallel()
+
+	service, fake := newTestService(t)
+	worker := testConnectedAgent("worker-a", "Worker A", "worker-uuid", Skill{Name: "run_task"})
+	err := service.store.Update(func(state *AppState) error {
+		state.Session.AgentToken = "agent-token"
+		state.ConnectedAgents = []ConnectedAgent{worker}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("seed store: %v", err)
+	}
+
+	message := hub.PullResponse{
+		DeliveryID:    "delivery-1",
+		FromAgentUUID: "caller-uuid",
+		OpenClawMessage: hub.OpenClawMessage{
+			Type:      "skill_request",
+			SkillName: dispatchSkillName,
+			RequestID: "parent-req",
+			Payload: map[string]any{
+				"agent":          "worker-a",
+				"skill_name":     "run_task",
+				"message":        "scheduled work",
+				"frequency":      "30m",
+				"payload_format": "markdown",
+			},
+		},
+	}
+
+	if err := service.handleInboundMessage(context.Background(), message); err != nil {
+		t.Fatalf("handle scheduled inbound message: %v", err)
+	}
+
+	if len(fake.publishCalls) != 1 {
+		t.Fatalf("expected one caller ack publish, got %d", len(fake.publishCalls))
+	}
+	if got := fake.publishCalls[0].ToAgentUUID; got != "caller-uuid" {
+		t.Fatalf("unexpected ack target: %q", got)
+	}
+	ackPayload, ok := fake.publishCalls[0].Message.Payload.(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected ack payload type: %T", fake.publishCalls[0].Message.Payload)
+	}
+	if got := ackPayload["scheduled"]; got != true {
+		t.Fatalf("expected scheduled ack payload, got %#v", ackPayload)
+	}
+	state := service.store.Snapshot()
+	if len(state.ScheduledMessages) != 1 {
+		t.Fatalf("expected one scheduled message, got %d", len(state.ScheduledMessages))
+	}
+	if got := state.ScheduledMessages[0].DispatchPayload["input"]; got != "scheduled work" {
+		t.Fatalf("unexpected scheduled payload: %#v", state.ScheduledMessages[0].DispatchPayload)
+	}
+}
+
 func TestDispatchFromUIRequiresSelectionWhenTargetAndSkillAreBlank(t *testing.T) {
 	t.Parallel()
 
