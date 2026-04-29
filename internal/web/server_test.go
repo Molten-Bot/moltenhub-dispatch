@@ -2396,6 +2396,64 @@ func TestHandleStylesUsesNeutralDefaultForSettingsDockButton(t *testing.T) {
 	}
 }
 
+func TestHandleStylesBaseThemeUsesLogoAccent(t *testing.T) {
+	t.Parallel()
+
+	server, err := New(&stubService{
+		state: app.AppState{
+			Settings: app.DefaultSettings(),
+		},
+	})
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/styles.css", nil)
+	rec := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 response, got %d", rec.Code)
+	}
+
+	pinkThemeIndex := strings.Index(body, `/* Selectable pink theme. */`)
+	if pinkThemeIndex == -1 {
+		t.Fatalf("expected selectable pink theme marker, body=%s", body)
+	}
+
+	baseStyles := body[:pinkThemeIndex]
+	for _, want := range []string{
+		`--hub-running-rgb: 0 145 176;`,
+		`--hub-accent-rgb: 0 119 146;`,
+		`--running: #0091b0;`,
+		`--brand-gradient: linear-gradient(135deg, #7dd7e8 0%, #0091b0 48%, #007792 100%);`,
+	} {
+		if !strings.Contains(baseStyles, want) {
+			t.Fatalf("expected base theme to use logo accent %q, body=%s", want, body)
+		}
+	}
+
+	for _, disallowed := range []string{
+		`236, 72, 153`,
+		`219, 39, 119`,
+		`244, 114, 182`,
+		`249, 168, 212`,
+		`190, 24, 93`,
+		`#ec4899`,
+		`#db2777`,
+		`#f9a8d4`,
+		`#f472b6`,
+		`#be185d`,
+		`#fbcfe8`,
+	} {
+		if strings.Contains(baseStyles, disallowed) {
+			t.Fatalf("expected base theme to avoid pink accent value %q, body=%s", disallowed, body)
+		}
+	}
+}
+
 func TestHandleStylesKeepsMoltenHubLogoUnfiltered(t *testing.T) {
 	t.Parallel()
 
