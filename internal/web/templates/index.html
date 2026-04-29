@@ -460,6 +460,7 @@
       const connectedAgentsRefreshStatusNodes = Array.from(document.querySelectorAll("[data-connected-agents-refresh-status]"));
       const connectedAgentsRefreshProgressNodes = Array.from(document.querySelectorAll("[data-connected-agents-refresh-progress]"));
       const connectedAgentsRefreshProgressBarNodes = Array.from(document.querySelectorAll("[data-connected-agents-refresh-bar]"));
+      const moltenbotHubLink = document.getElementById("moltenbot-hub-link");
       const onboardingModalBackdrop = document.getElementById("onboarding-modal-backdrop");
       const agentSettingsDockButton = document.getElementById("agent-settings-dock-button");
       const agentSettingsModalClose = document.getElementById("agent-profile-modal-close");
@@ -494,6 +495,54 @@
       const CONNECTED_AGENTS_REFRESH_INTERVAL_MS = 30000;
       const CONNECTED_AGENTS_REFRESH_TICK_MS = 250;
       const LUCIDE_ICON_ATTR = "data-lucide";
+      const ANALYTICS_APP_NAME = "moltenhub_dispatch";
+
+      const analyticsValue = (value, fallback = "") => {
+        if (typeof value === "string") {
+          const text = trimmedString(value);
+          return text === "" ? fallback : text.slice(0, 100);
+        }
+        if (typeof value === "number" && Number.isFinite(value)) {
+          return value;
+        }
+        if (typeof value === "boolean") {
+          return value;
+        }
+        return fallback;
+      };
+
+      const analyticsSlug = (value, fallback = "unknown") => {
+        const normalized = trimmedString(value)
+          .toLowerCase()
+          .replace(/[^a-z0-9_]+/g, "_")
+          .replace(/^_+|_+$/g, "");
+        return normalized === "" ? fallback : normalized.slice(0, 100);
+      };
+
+      const trackAppEvent = (eventName, params = {}) => {
+        const name = analyticsSlug(eventName, "");
+        if (name === "" || !googleAnalyticsMeasurementID || typeof window.gtag !== "function") {
+          return;
+        }
+        const eventParams = {
+          send_to: googleAnalyticsMeasurementID,
+          app_name: ANALYTICS_APP_NAME,
+        };
+        if (params && typeof params === "object") {
+          Object.entries(params).forEach(([key, value]) => {
+            const paramName = analyticsSlug(key, "");
+            if (paramName === "" || paramName === "send_to") {
+              return;
+            }
+            const safeValue = analyticsValue(value, null);
+            if (safeValue === null || safeValue === "") {
+              return;
+            }
+            eventParams[paramName] = safeValue;
+          });
+        }
+        window.gtag("event", name, eventParams);
+      };
 
       const lucideAvailable = () => {
         return typeof window.lucide === "object"
@@ -896,6 +945,10 @@
           } else {
             activityFeedExpandedKeys.delete(activityKey);
           }
+          trackAppEvent("activity_detail_toggle", {
+            app_area: "activity",
+            expanded: nextExpanded,
+          });
           if (!nextExpanded) {
             return;
           }
@@ -1098,7 +1151,12 @@
         applyThemeMode(loadThemeMode(), false);
         if (themeToggleButton) {
           themeToggleButton.addEventListener("click", () => {
-            applyThemeMode(nextThemeMode(currentThemeMode()), true);
+            const nextTheme = nextThemeMode(currentThemeMode());
+            applyThemeMode(nextTheme, true);
+            trackAppEvent("theme_change", {
+              app_area: "appearance",
+              theme: nextTheme,
+            });
           });
         }
       };
@@ -1109,6 +1167,7 @@
         }
         window.gtag("event", "page_view", {
           send_to: googleAnalyticsMeasurementID,
+          app_name: ANALYTICS_APP_NAME,
           page_title: document.title,
           page_location: window.location.href,
           page_path: `${window.location.pathname}${window.location.search}`,
@@ -1285,15 +1344,24 @@
           window.addEventListener("resize", positionPanel);
           window.addEventListener("scroll", positionPanel, true);
           mountPicker();
+          trackAppEvent("emoji_picker_open", {
+            app_area: "agent_settings",
+          });
         };
 
-        const setEmojiValue = (nextValue, closeWhenDone = false) => {
+        const setEmojiValue = (nextValue, closeWhenDone = false, trackChange = true) => {
           const nextEmoji = firstEmojiGrapheme(nextValue);
           const changed = input.value !== nextEmoji;
           input.value = nextEmoji;
           syncSelectedState();
           if (changed) {
             input.dispatchEvent(new Event("input", { bubbles: true }));
+          }
+          if (changed && trackChange) {
+            trackAppEvent("emoji_select", {
+              app_area: "agent_settings",
+              has_emoji: nextEmoji !== "",
+            });
           }
           if (closeWhenDone) {
             closePanel();
@@ -1325,10 +1393,13 @@
         });
 
         clearButton.addEventListener("click", () => {
-          setEmojiValue("", true);
+          trackAppEvent("emoji_clear", {
+            app_area: "agent_settings",
+          });
+          setEmojiValue("", true, false);
         });
 
-        setEmojiValue(input.value);
+        setEmojiValue(input.value, false, false);
       };
 
       hydrateLucideIcons(document);
@@ -1343,6 +1414,9 @@
 
       if (agentSettingsDockButton instanceof HTMLButtonElement) {
         agentSettingsDockButton.addEventListener("click", () => {
+          trackAppEvent("agent_settings_open", {
+            app_area: "agent_settings",
+          });
           setAgentSettingsModalOpen(true);
           void refreshAgentSettingsProfile();
         });
@@ -1350,6 +1424,10 @@
 
       if (agentSettingsModalClose instanceof HTMLButtonElement) {
         agentSettingsModalClose.addEventListener("click", () => {
+          trackAppEvent("agent_settings_close", {
+            app_area: "agent_settings",
+            method: "button",
+          });
           setAgentSettingsModalOpen(false, true);
         });
       }
@@ -1357,6 +1435,10 @@
       if (onboardingModalBackdrop instanceof HTMLElement) {
         onboardingModalBackdrop.addEventListener("click", (event) => {
           if (event.target === onboardingModalBackdrop && bound) {
+            trackAppEvent("agent_settings_close", {
+              app_area: "agent_settings",
+              method: "backdrop",
+            });
             setAgentSettingsModalOpen(false, true);
           }
         });
@@ -1372,6 +1454,10 @@
         if (document.querySelector(".hub-emoji-picker-panel:not([hidden])")) {
           return;
         }
+        trackAppEvent("agent_settings_close", {
+          app_area: "agent_settings",
+          method: "escape",
+        });
         setAgentSettingsModalOpen(false, true);
       });
 
@@ -1390,6 +1476,18 @@
             field.addEventListener("input", syncAgentProfileSaveState);
           }
         });
+        bindForm.addEventListener("submit", (event) => {
+          const submitter = event.submitter;
+          const action = submitter instanceof HTMLButtonElement
+            ? trimmedString(submitter.getAttribute("formaction") || bindForm.getAttribute("action"))
+            : trimmedString(bindForm.getAttribute("action"));
+          const disconnecting = action === "/disconnect";
+          trackAppEvent(disconnecting ? "agent_disconnect" : "agent_profile_save", {
+            app_area: "agent_settings",
+            changed: agentProfileChanged(),
+            transport_type: "beacon",
+          });
+        });
       }
       const normalizedOnboardingMode = (value) => String(value || "").trim() === "new" ? "new" : "existing";
       const onboardingModeFromToken = (token) => String(token || "").trim().toLowerCase().startsWith("b_") ? "new" : "existing";
@@ -1397,8 +1495,9 @@
         onboardingModeField instanceof HTMLInputElement ? onboardingModeField.value : "existing",
       );
       const currentOnboardingMode = () => onboardingModeState;
-      const applyOnboardingMode = (mode) => {
+      const applyOnboardingMode = (mode, options = {}) => {
         const normalizedMode = normalizedOnboardingMode(mode);
+        const previousMode = onboardingModeState;
         onboardingModeState = normalizedMode;
         const isNew = normalizedMode === "new";
         if (onboardingModeField instanceof HTMLInputElement) {
@@ -1437,6 +1536,12 @@
           active: false,
           message: "",
         });
+        if (options.track !== false && !bound && previousMode !== normalizedMode) {
+          trackAppEvent("onboarding_mode_change", {
+            app_area: "onboarding",
+            agent_mode: normalizedMode,
+          });
+        }
       };
 
       const setBindBusy = (busy) => {
@@ -1497,7 +1602,7 @@
       if (!bound) {
         applyOnboardingMode(onboardingTokenInput instanceof HTMLInputElement
           ? onboardingModeFromToken(onboardingTokenInput.value)
-          : currentOnboardingMode());
+          : currentOnboardingMode(), { track: false });
         if (onboardingTokenInput instanceof HTMLInputElement) {
           onboardingTokenInput.addEventListener("input", () => {
             applyOnboardingMode(onboardingModeFromToken(onboardingTokenInput.value));
@@ -1522,6 +1627,11 @@
           const token = String(formData.get("bind_token") || formData.get("agent_token") || "").trim();
           const mode = currentOnboardingMode();
           const isNew = mode === "new";
+          trackAppEvent("onboarding_submit", {
+            app_area: "onboarding",
+            agent_mode: mode,
+            hub_region: analyticsSlug(formData.get("hub_region"), "default"),
+          });
           renderOnboarding({
             stage: "bind",
             active: true,
@@ -1571,14 +1681,33 @@
                 });
               }
               if (body && body.bound) {
+                trackAppEvent("onboarding_result", {
+                  app_area: "onboarding",
+                  agent_mode: mode,
+                  result: "partial_success",
+                  http_status: response.status,
+                });
                 redirected = true;
                 redirectToConsole();
+                return;
               }
+              trackAppEvent("onboarding_result", {
+                app_area: "onboarding",
+                agent_mode: mode,
+                result: "failure",
+                http_status: response.status,
+              });
               return;
             }
             if (body.onboarding) {
               renderOnboarding(body.onboarding);
             }
+            trackAppEvent("onboarding_result", {
+              app_area: "onboarding",
+              agent_mode: mode,
+              result: "success",
+              http_status: response.status,
+            });
             redirected = true;
             redirectToConsole();
           } catch (error) {
@@ -1592,6 +1721,11 @@
               active: false,
               message,
               error: true,
+            });
+            trackAppEvent("onboarding_result", {
+              app_area: "onboarding",
+              agent_mode: mode,
+              result: "network_error",
             });
           } finally {
             if (!redirected) {
@@ -2367,6 +2501,12 @@
           card.setAttribute("aria-pressed", "false");
           card.addEventListener("click", () => {
             selectConnectedAgentTarget(targetRef);
+            trackAppEvent("dispatch_target_select", {
+              app_area: "dispatch",
+              connected_agent_count: connectedAgentsCount,
+              agent_online: presenceStatus === "online",
+              skill_count: connectedAgentSkillEntries(agent).length,
+            });
           });
         }
 
@@ -2458,6 +2598,28 @@
         setSkillPayloadValidationMessage("");
         setDispatchSubmitStatus("");
         syncConnectedAgentSelection({ forceFirstSkill: true });
+      };
+
+      const dispatchAnalyticsParams = (dispatchState = resolveSelectedDispatchState()) => {
+        const schemaLocked = skillPayloadInput instanceof HTMLTextAreaElement
+          && skillPayloadInput.readOnly
+          && trimmedString(skillPayloadInput.dataset.schemaText) !== "";
+        const payload = skillPayloadInput instanceof HTMLTextAreaElement && !schemaLocked
+          ? trimmedString(skillPayloadInput.value)
+          : "";
+        const payloadFormat = skillPayloadFormatInput instanceof HTMLInputElement
+          ? trimmedString(skillPayloadFormatInput.value)
+          : "";
+        const skillEntry = selectedSkillEntry();
+        return {
+          app_area: "dispatch",
+          connected_agent_count: connectedAgentsCount,
+          has_target: trimmedString(dispatchState && dispatchState.targetRef) !== "",
+          has_skill: trimmedString(dispatchState && dispatchState.skillName) !== "",
+          has_payload: payload !== "",
+          payload_format: payloadFormat || "none",
+          has_schema: Boolean(skillEntry && skillEntry.schemaText),
+        };
       };
 
       const stopConnectedAgentsAutoRefresh = (_statusText = "") => {
@@ -2863,6 +3025,7 @@
         if (connectedAgentsRefreshInFlight) {
           return;
         }
+        const reason = analyticsSlug(_reason, "manual");
         connectedAgentsRefreshInFlight = true;
         if (connectedAgentsAutoRefreshTimer) {
           window.clearTimeout(connectedAgentsAutoRefreshTimer);
@@ -2898,9 +3061,26 @@
             : [];
           renderConnectedAgents(agents);
           setConnectedAgentsRefreshState(false, "");
+          if (reason === "manual") {
+            trackAppEvent("connected_agents_refresh_result", {
+              app_area: "connected_agents",
+              trigger: reason,
+              result: "success",
+              http_status: response.status,
+              connected_agent_count: agents.length,
+            });
+          }
         } catch (error) {
           const message = error instanceof Error ? error.message : "Unable to refresh connected agents.";
           setConnectedAgentsRefreshState(false, message, true);
+          if (reason === "manual") {
+            trackAppEvent("connected_agents_refresh_result", {
+              app_area: "connected_agents",
+              trigger: reason,
+              result: "failure",
+              connected_agent_count: connectedAgentsCount,
+            });
+          }
         } finally {
           connectedAgentsRefreshInFlight = false;
           if (shouldPollConnectedAgents()) {
@@ -2966,6 +3146,11 @@
         if (event) {
           event.preventDefault();
         }
+        trackAppEvent("hub_status_click", {
+          app_area: "connection",
+          connected: isHubConnectedState(),
+          destination: href === HUB_LOGIN_URL ? "signin" : "hub",
+        });
         if (typeof window.open === "function") {
           window.open(href, "_blank", "noopener,noreferrer");
           return;
@@ -3005,6 +3190,27 @@
         });
       }
 
+      if (moltenbotHubLink instanceof HTMLAnchorElement) {
+        moltenbotHubLink.addEventListener("click", () => {
+          trackAppEvent("external_hub_link_click", {
+            app_area: "navigation",
+            destination: "hub",
+          });
+        });
+      }
+
+      document.querySelectorAll(".sub-actions-hub-link, .onboarding-signin-link").forEach((link) => {
+        if (!(link instanceof HTMLAnchorElement)) {
+          return;
+        }
+        link.addEventListener("click", () => {
+          trackAppEvent("external_hub_link_click", {
+            app_area: "navigation",
+            destination: link.classList.contains("onboarding-signin-link") ? "signin" : "hub",
+          });
+        });
+      });
+
       if (shell && hubConnItem && hubConnText && subActions && subActionsNotice) {
         setLocalConnection();
         syncSubActions(latestHubConnectionState);
@@ -3015,6 +3221,11 @@
       connectedAgentsRefreshButtons.forEach((node) => {
         if (node instanceof HTMLButtonElement) {
           node.addEventListener("click", () => {
+            trackAppEvent("connected_agents_refresh", {
+              app_area: "connected_agents",
+              trigger: "manual",
+              connected_agent_count: connectedAgentsCount,
+            });
             void refreshConnectedAgents("manual");
           });
         }
@@ -3026,6 +3237,7 @@
       }
       if (dispatchTaskClear instanceof HTMLButtonElement) {
         dispatchTaskClear.addEventListener("click", () => {
+          trackAppEvent("dispatch_clear", dispatchAnalyticsParams());
           resetManualDispatchForm();
         });
       }
@@ -3035,6 +3247,10 @@
           const dispatchState = resolveSelectedDispatchState();
           if (dispatchState.targetRef === "") {
             setDispatchSubmitStatus("Please select agent, skill to dispatch a request.", true);
+            trackAppEvent("dispatch_submit", {
+              ...dispatchAnalyticsParams(dispatchState),
+              result: "missing_target",
+            });
             const firstSelectableTarget = manualDispatchTargets instanceof HTMLElement
               ? manualDispatchTargets.querySelector("[data-connected-agent-target-ref]")
               : null;
@@ -3048,10 +3264,18 @@
           }
           if (skillNameSelect instanceof HTMLSelectElement && !skillNameSelect.disabled && dispatchState.skillName === "") {
             setDispatchSubmitStatus("Select a skill for the chosen agent before dispatching.", true);
+            trackAppEvent("dispatch_submit", {
+              ...dispatchAnalyticsParams(dispatchState),
+              result: "missing_skill",
+            });
             skillNameSelect.focus({ preventScroll: true });
             return;
           }
           if (!validateSkillPayload()) {
+            trackAppEvent("dispatch_submit", {
+              ...dispatchAnalyticsParams(dispatchState),
+              result: "invalid_payload",
+            });
             if (skillPayloadInput instanceof HTMLTextAreaElement) {
               skillPayloadInput.reportValidity();
               skillPayloadInput.focus({ preventScroll: true });
@@ -3061,9 +3285,14 @@
           if (dispatchRequestInFlight) {
             return;
           }
+          const analyticsParams = dispatchAnalyticsParams(dispatchState);
           dispatchRequestInFlight = true;
           setDispatchSubmitBusy(true);
           setDispatchSubmitStatus("Sending...");
+          trackAppEvent("dispatch_submit", {
+            ...analyticsParams,
+            result: "started",
+          });
           try {
             const formData = new FormData(manualDispatchForm);
             formData.set("target_agent_ref", dispatchState.targetRef);
@@ -3090,6 +3319,11 @@
             if (!response.ok || !body || body.ok !== true) {
               const message = trimmedString(body && body.error) || `dispatch request failed with ${response.status}`;
               setDispatchSubmitStatus(message, true);
+              trackAppEvent("dispatch_result", {
+                ...analyticsParams,
+                result: "failure",
+                http_status: response.status,
+              });
               return;
             }
             if (skillPayloadInput instanceof HTMLTextAreaElement) {
@@ -3103,9 +3337,18 @@
             const taskID = trimmedString(body && body.task_id);
             const successMessage = taskID ? `In Queue: ${taskID}` : "In Queue.";
             setDispatchSubmitStatus(successMessage);
+            trackAppEvent("dispatch_result", {
+              ...analyticsParams,
+              result: "success",
+              http_status: response.status,
+            });
           } catch (error) {
             const message = error instanceof Error ? error.message : "Unable to dispatch task.";
             setDispatchSubmitStatus(message, true);
+            trackAppEvent("dispatch_result", {
+              ...analyticsParams,
+              result: "network_error",
+            });
           } finally {
             dispatchRequestInFlight = false;
             setDispatchSubmitBusy(false);
@@ -3113,7 +3356,14 @@
         });
       }
       if (skillNameSelect instanceof HTMLSelectElement) {
-        skillNameSelect.addEventListener("change", updateSkillNameOptions);
+        skillNameSelect.addEventListener("change", () => {
+          updateSkillNameOptions();
+          const skillEntry = selectedSkillEntry();
+          trackAppEvent("dispatch_skill_select", {
+            app_area: "dispatch",
+            has_schema: Boolean(skillEntry && skillEntry.schemaText),
+          });
+        });
       }
       initRuntimeEventCards();
       renderActivityFeed(parseInitialPendingTasks(), parseInitialRecentEvents());

@@ -268,6 +268,42 @@ func TestHandleIndexRendersGoogleAnalyticsSnippet(t *testing.T) {
 	}
 }
 
+func TestHandleIndexRendersGoogleAnalyticsInteractionEvents(t *testing.T) {
+	t.Parallel()
+
+	settings := app.DefaultSettings()
+	settings.GoogleAnalyticsMeasurementID = "G-TEST123456"
+
+	server, err := New(&stubService{state: app.AppState{Settings: settings}})
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	for _, want := range []string{
+		`const ANALYTICS_APP_NAME = "moltenhub_dispatch";`,
+		`const trackAppEvent = (eventName, params = {}) => {`,
+		`window.gtag("event", name, eventParams);`,
+		`trackAppEvent("theme_change"`,
+		`trackAppEvent("agent_settings_open"`,
+		`trackAppEvent("onboarding_submit"`,
+		`trackAppEvent("dispatch_submit"`,
+		`trackAppEvent("dispatch_result"`,
+		`trackAppEvent("connected_agents_refresh"`,
+		`trackAppEvent("activity_detail_toggle"`,
+		`transport_type: "beacon"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("expected google analytics interaction tracking %q, body=%s", want, body)
+		}
+	}
+}
+
 func TestHandleIndexOmitsGoogleAnalyticsSnippetWhenDisabled(t *testing.T) {
 	t.Parallel()
 
@@ -1937,7 +1973,7 @@ func TestHandleIndexRendersBottomDockAndSettingsDialogForBoundSession(t *testing
 	if !strings.Contains(body, `const initAppearanceControls = () => {`) || !strings.Contains(body, `applyThemeMode(loadThemeMode(), false);`) {
 		t.Fatalf("expected theme controls initialization, body=%s", body)
 	}
-	if !strings.Contains(body, `themeToggleButton.addEventListener("click", () => {`) || !strings.Contains(body, `applyThemeMode(nextThemeMode(currentThemeMode()), true);`) {
+	if !strings.Contains(body, `themeToggleButton.addEventListener("click", () => {`) || !strings.Contains(body, `const nextTheme = nextThemeMode(currentThemeMode());`) || !strings.Contains(body, `applyThemeMode(nextTheme, true);`) {
 		t.Fatalf("expected theme toggle click cycle handler, body=%s", body)
 	}
 	if strings.Contains(body, `const initSnowfallBackground = () => {`) || strings.Contains(body, `initSnowfallBackground();`) {
