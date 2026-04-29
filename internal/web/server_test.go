@@ -1928,10 +1928,10 @@ func TestHandleIndexRendersBottomDockAndSettingsDialogForBoundSession(t *testing
 	if !strings.Contains(body, `const themeToggleButton = document.getElementById("theme-toggle");`) {
 		t.Fatalf("expected theme toggle JS hook, body=%s", body)
 	}
-	if !strings.Contains(body, `const THEME_MODES = ["light", "dark", "night"];`) || !strings.Contains(body, `const DEFAULT_THEME_MODE = "dark";`) {
+	if !strings.Contains(body, `const THEME_MODES = ["light", "dark", "night", "pink"];`) || !strings.Contains(body, `const DEFAULT_THEME_MODE = "dark";`) {
 		t.Fatalf("expected theme cycle constants, body=%s", body)
 	}
-	if !strings.Contains(body, `const THEME_ICONS = {`) {
+	if !strings.Contains(body, `const THEME_ICONS = {`) || !strings.Contains(body, `pink: "heart",`) {
 		t.Fatalf("expected theme icon map for toggle button, body=%s", body)
 	}
 	if !strings.Contains(body, `const initAppearanceControls = () => {`) || !strings.Contains(body, `applyThemeMode(loadThemeMode(), false);`) {
@@ -2345,6 +2345,12 @@ func TestHandleStylesUsesNeutralDefaultForSettingsDockButton(t *testing.T) {
 	}
 	if !strings.Contains(body, ".prompt-mode-mobile-label {\n    position: relative;\n    z-index: 1;\n    display: block;") {
 		t.Fatalf("expected mobile bottom dock labels to render under icons, body=%s", body)
+	}
+	if !strings.Contains(body, `/* Selectable pink theme. */`) || !strings.Contains(body, `html.pink {`) {
+		t.Fatalf("expected pink palette to be available as its own selectable theme, body=%s", body)
+	}
+	if !strings.Contains(body, `html.dark {`) || !strings.Contains(body, `--body-linear: linear-gradient(180deg, #0d1424, #0a1120 58%, #09101d);`) {
+		t.Fatalf("expected existing dark theme to remain available separately from pink theme, body=%s", body)
 	}
 	if !strings.Contains(body, ".badge.completed {\n  background: var(--good);\n}") {
 		t.Fatalf("expected shared completed badge compatibility selector, body=%s", body)

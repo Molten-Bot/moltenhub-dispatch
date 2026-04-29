@@ -3009,7 +3009,8 @@ select.prompt-control {
 }
 
 html.dark,
-html.night {
+html.night,
+html.pink {
   color-scheme: dark;
 }
 
@@ -5025,8 +5026,8 @@ html.night {
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
-/* Pink brand palette overrides. */
-:root {
+/* Selectable pink theme. */
+html.pink {
   --hub-bg-rgb: 255 241 248;
   --hub-panel-rgb: 255 250 253;
   --hub-panel-soft-rgb: 253 231 243;
@@ -5131,7 +5132,7 @@ html.night {
   --shadow-lg: 0 28px 72px rgba(190, 24, 93, 0.2);
 }
 
-html.dark {
+html.pink {
   --hub-bg-rgb: 45 14 32;
   --hub-panel-rgb: 58 21 42;
   --hub-panel-soft-rgb: 82 31 59;
@@ -5227,60 +5228,6 @@ html.dark {
   --shadow-sm: 0 10px 28px rgba(10, 2, 7, 0.4);
   --shadow-md: 0 18px 44px rgba(10, 2, 7, 0.52);
   --shadow-lg: 0 28px 72px rgba(10, 2, 7, 0.64);
-}
-
-html.night {
-  --hub-bg-rgb: 24 6 17;
-  --hub-panel-rgb: 33 9 24;
-  --hub-panel-soft-rgb: 52 16 38;
-  --hub-border-rgb: 214 118 166;
-  --hub-text-rgb: 255 241 248;
-  --hub-muted-rgb: 230 150 190;
-  --hub-meta-rgb: 202 103 153;
-  --bg: #180611;
-  --bg-soft: rgba(24, 7, 17, 0.92);
-  --bg-elevated: #250a1b;
-  --bg-panel: rgba(29, 8, 21, 0.88);
-  --bg-panel-strong: rgba(35, 10, 26, 0.94);
-  --bg-panel-muted: rgba(52, 16, 38, 0.9);
-  --border: rgba(214, 118, 166, 0.3);
-  --border-strong: rgba(244, 114, 182, 0.46);
-  --text: #fff1f8;
-  --text-soft: #f2b6d5;
-  --muted: #e696be;
-  --meta: #ca6799;
-  --surface-glass: linear-gradient(160deg, rgba(33, 9, 24, 0.94), rgba(21, 6, 15, 0.9));
-  --surface-glass-strong: linear-gradient(160deg, rgba(41, 12, 30, 0.96), rgba(24, 7, 17, 0.94));
-  --surface-glass-solid: rgba(24, 7, 17, 0.96);
-  --surface-glow-border: rgba(244, 114, 182, 0.26);
-  --surface-glow:
-    linear-gradient(180deg, rgba(35, 10, 26, 0.98), rgba(27, 8, 20, 0.96) 18%, rgba(18, 5, 13, 0.96) 100%),
-    linear-gradient(160deg, rgba(41, 12, 30, 0.9), rgba(21, 6, 15, 0.94));
-  --surface-terminal-bg:
-    linear-gradient(180deg, rgba(24, 7, 17, 0.97), rgba(16, 4, 11, 0.99)),
-    radial-gradient(circle at top left, rgba(236, 72, 153, 0.08), transparent 40%);
-  --surface-fullscreen-bg:
-    linear-gradient(180deg, rgba(18, 5, 13, 0.88), rgba(16, 4, 11, 0.96)),
-    radial-gradient(circle at top left, rgba(236, 72, 153, 0.14), transparent 38%),
-    radial-gradient(circle at bottom right, rgba(190, 24, 93, 0.14), transparent 42%);
-  --surface-auth-panel-bg: linear-gradient(180deg, rgba(33, 9, 24, 0.98), rgba(18, 5, 13, 0.98));
-  --foreground: #fff1f8;
-  --muted-foreground: #ca6799;
-  --background: #180611;
-  --card: #250a1b;
-  --card-foreground: #fff1f8;
-  --secondary: #341026;
-  --secondary-foreground: rgba(255, 241, 248, 0.82);
-  --theme-dock-bg: linear-gradient(180deg, rgba(30, 8, 22, 0.96), rgba(18, 5, 13, 0.96));
-  --theme-button-bg: linear-gradient(180deg, rgba(35, 10, 26, 0.98), rgba(22, 6, 16, 0.98));
-  --body-radial-left: radial-gradient(1100px 560px at -12% -16%, rgba(219, 39, 119, 0.22), transparent 56%);
-  --body-radial-right: radial-gradient(920px 520px at 112% 2%, rgba(190, 24, 93, 0.18), transparent 60%);
-  --body-linear: linear-gradient(180deg, #180611, #14050f 55%, #10040b);
-  --body-orb-a: radial-gradient(circle, rgba(219, 39, 119, 0.18) 0%, rgba(219, 39, 119, 0) 70%);
-  --body-orb-b: radial-gradient(circle, rgba(190, 24, 93, 0.16) 0%, rgba(190, 24, 93, 0) 74%);
-  --shadow-sm: 0 10px 28px rgba(0, 0, 0, 0.48);
-  --shadow-md: 0 18px 44px rgba(0, 0, 0, 0.6);
-  --shadow-lg: 0 28px 72px rgba(0, 0, 0, 0.72);
 }
 
 .brand-glass-panel {
@@ -5643,7 +5590,16 @@ html.night .settings-modal textarea,
 html.night .settings-modal select,
 html.night .onboarding-modal input:not([type="radio"]):not([type="checkbox"]),
 html.night .onboarding-modal textarea,
-html.night .onboarding-modal select {
+html.night .onboarding-modal select,
+html.pink .shell input:not([type="radio"]):not([type="checkbox"]),
+html.pink .shell textarea,
+html.pink .shell select,
+html.pink .settings-modal input:not([type="radio"]):not([type="checkbox"]),
+html.pink .settings-modal textarea,
+html.pink .settings-modal select,
+html.pink .onboarding-modal input:not([type="radio"]):not([type="checkbox"]),
+html.pink .onboarding-modal textarea,
+html.pink .onboarding-modal select {
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.03),
     0 1px 3px rgba(0, 0, 0, 0.18);
@@ -5685,7 +5641,17 @@ html.night .settings-modal select:focus,
 html.night .onboarding-modal input:focus,
 html.night .onboarding-modal textarea:focus,
 html.night .onboarding-modal select:focus,
-html.night .runtime-option:focus-within {
+html.night .runtime-option:focus-within,
+html.pink .shell input:focus,
+html.pink .shell textarea:focus,
+html.pink .shell select:focus,
+html.pink .settings-modal input:focus,
+html.pink .settings-modal textarea:focus,
+html.pink .settings-modal select:focus,
+html.pink .onboarding-modal input:focus,
+html.pink .onboarding-modal textarea:focus,
+html.pink .onboarding-modal select:focus,
+html.pink .runtime-option:focus-within {
   box-shadow:
     0 0 0 3px var(--ring),
     inset 0 1px 0 rgba(255, 255, 255, 0.03);
