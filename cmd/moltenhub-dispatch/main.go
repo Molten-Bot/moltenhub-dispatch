@@ -54,6 +54,7 @@ func main() {
 	defer cancel()
 
 	go service.RunHubLoop(rootCtx)
+	go service.RunSchedulerLoop(rootCtx)
 
 	go func() {
 		log.Printf("listening on %s", httpServer.Addr)

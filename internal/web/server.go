@@ -128,9 +128,10 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	state := s.service.Snapshot()
 	view := statusView{
-		connectionView: connectionStatusView(state),
-		PendingTasks:   state.PendingTasks,
-		RecentEvents:   state.RecentEvents,
+		connectionView:    connectionStatusView(state),
+		PendingTasks:      state.PendingTasks,
+		ScheduledMessages: state.ScheduledMessages,
+		RecentEvents:      state.RecentEvents,
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_ = json.NewEncoder(w).Encode(view)
@@ -607,6 +608,29 @@ func dispatchRequestFromValues(values url.Values) (app.DispatchRequest, error) {
 		}
 		timeout = seconds
 	}
+	scheduledAt, err := parseScheduleTime(support.FirstNonEmptyString(
+		values.Get("scheduled_at"),
+		values.Get("scheduledAt"),
+		values.Get("schedule_at"),
+		values.Get("scheduleAt"),
+		values.Get("run_at"),
+		values.Get("runAt"),
+		values.Get("start_at"),
+		values.Get("startAt"),
+	))
+	if err != nil {
+		return app.DispatchRequest{}, err
+	}
+	frequency, err := parseScheduleDuration(support.FirstNonEmptyString(
+		values.Get("frequency"),
+		values.Get("recurring_frequency"),
+		values.Get("recurringFrequency"),
+		values.Get("interval"),
+		values.Get("every"),
+	))
+	if err != nil {
+		return app.DispatchRequest{}, err
+	}
 
 	return app.DispatchRequest{
 		TargetAgentRef: targetAgentRef,
@@ -616,7 +640,48 @@ func dispatchRequestFromValues(values url.Values) (app.DispatchRequest, error) {
 		Payload:        payloadValue,
 		PayloadFormat:  payloadFormat,
 		Timeout:        timeout,
+		ScheduledAt:    scheduledAt,
+		Frequency:      frequency,
 	}, nil
+}
+
+func parseScheduleTime(raw string) (time.Time, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return time.Time{}, nil
+	}
+	for _, layout := range []string{time.RFC3339Nano, time.RFC3339, "2006-01-02 15:04:05", "2006-01-02 15:04"} {
+		if parsed, err := time.Parse(layout, raw); err == nil {
+			return parsed.UTC(), nil
+		}
+	}
+	duration, err := time.ParseDuration(raw)
+	if err == nil {
+		return time.Now().UTC().Add(duration), nil
+	}
+	return time.Time{}, errors.New("scheduled_at must be RFC3339 timestamp or duration")
+}
+
+func parseScheduleDuration(raw string) (time.Duration, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0, nil
+	}
+	duration, err := time.ParseDuration(raw)
+	if err == nil {
+		if duration < 0 {
+			return 0, errors.New("frequency must be positive")
+		}
+		return duration, nil
+	}
+	seconds, err := time.ParseDuration(raw + "s")
+	if err != nil {
+		return 0, errors.New("frequency must be a duration or numeric seconds")
+	}
+	if seconds < 0 {
+		return 0, errors.New("frequency must be positive")
+	}
+	return seconds, nil
 }
 
 func parseSkills(raw string) []app.Skill {
@@ -736,8 +801,9 @@ type connectionView struct {
 
 type statusView struct {
 	connectionView
-	PendingTasks []app.PendingTask  `json:"pending_tasks"`
-	RecentEvents []app.RuntimeEvent `json:"recent_events"`
+	PendingTasks      []app.PendingTask      `json:"pending_tasks"`
+	ScheduledMessages []app.ScheduledMessage `json:"scheduled_messages"`
+	RecentEvents      []app.RuntimeEvent     `json:"recent_events"`
 }
 
 type activityFeedItem struct {

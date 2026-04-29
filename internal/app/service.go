@@ -524,6 +524,31 @@ func (s *Service) DispatchFromUI(ctx context.Context, req DispatchRequest) (Pend
 	if err != nil {
 		return PendingTask{}, err
 	}
+	if isScheduledDispatch(req) {
+		scheduled, err := s.scheduleDispatch(state, target, req, "", "")
+		if err != nil {
+			return PendingTask{}, err
+		}
+		_ = s.logEvent("info", "Message scheduled", scheduledMessageSummary(scheduled), scheduled.ID, "")
+		return PendingTask{
+			ID:                     scheduled.ID,
+			Status:                 ScheduledMessageStatusActive,
+			ParentRequestID:        scheduled.ParentRequestID,
+			OriginalSkillName:      scheduled.OriginalSkillName,
+			TargetAgentDisplayName: scheduled.TargetAgentDisplayName,
+			TargetAgentEmoji:       scheduled.TargetAgentEmoji,
+			TargetAgentUUID:        scheduled.TargetAgentUUID,
+			TargetAgentURI:         scheduled.TargetAgentURI,
+			CallerAgentUUID:        scheduled.CallerAgentUUID,
+			CallerAgentURI:         scheduled.CallerAgentURI,
+			CallerRequestID:        scheduled.CallerRequestID,
+			Repo:                   scheduled.Repo,
+			CreatedAt:              scheduled.CreatedAt,
+			ExpiresAt:              scheduled.NextRunAt,
+			DispatchPayload:        scheduled.DispatchPayload,
+			DispatchPayloadFormat:  scheduled.DispatchPayloadFormat,
+		}, nil
+	}
 
 	task, publishReq := s.buildPendingTask(state, target, req, "", "")
 	if err := s.writeTaskLog(task.LogPath, map[string]any{
@@ -582,6 +607,21 @@ func (s *Service) PollOnce(ctx context.Context) error {
 		return err
 	}
 	return s.expirePendingTasks(ctx)
+}
+
+func (s *Service) RunSchedulerLoop(ctx context.Context) {
+	for {
+		if ctx.Err() != nil {
+			return
+		}
+		if err := s.processDueScheduledMessages(ctx); err != nil && ctx.Err() == nil {
+			_ = s.logEvent("error", "Scheduled message failed", err.Error(), "", "")
+		}
+		delay := s.nextScheduleDelay()
+		if !sleepWithContext(ctx, delay) {
+			return
+		}
+	}
 }
 
 func (s *Service) RunHubLoop(ctx context.Context) {
@@ -976,6 +1016,8 @@ func (s *Service) handleSkillRequest(ctx context.Context, message hub.PullRespon
 		Repo:           payload.Repo,
 		LogPaths:       payload.LogPaths,
 		PayloadFormat:  payload.PayloadFormat,
+		ScheduledAt:    payload.ScheduledAt,
+		Frequency:      payload.Frequency,
 	}
 	taskPayload, err := payload.TaskPayload()
 	if err != nil {
@@ -1004,6 +1046,29 @@ func (s *Service) handleSkillRequest(ctx context.Context, message hub.PullRespon
 			DispatchPayload:   normalizePayload(req.Payload, req.Repo, req.LogPaths),
 		}
 		return s.handleTaskFailure(ctx, state, pending, failureFromError("Task dispatch failed before it reached a connected agent.", err))
+	}
+	if isScheduledDispatch(req) {
+		scheduled, err := s.scheduleDispatch(state, target, req, callerAgentUUID, callerAgentURI)
+		if err != nil {
+			pending := PendingTask{
+				ID:                NewID("task"),
+				ParentRequestID:   message.OpenClawMessage.RequestID,
+				CallerAgentUUID:   callerAgentUUID,
+				CallerAgentURI:    callerAgentURI,
+				CallerRequestID:   message.OpenClawMessage.RequestID,
+				OriginalSkillName: req.SkillName,
+				Repo:              req.Repo,
+				LogPath:           filepath.Join(s.settings.DataDir, "logs", NewID("task")+".log"),
+				DispatchPayload:   normalizePayload(req.Payload, req.Repo, req.LogPaths),
+			}
+			return s.handleTaskFailure(ctx, state, pending, failureFromError("Task schedule failed before it reached a connected agent.", err))
+		}
+		if hasCallerTarget(PendingTask{CallerAgentUUID: callerAgentUUID, CallerAgentURI: callerAgentURI}) {
+			if err := s.publishScheduleAckToCaller(ctx, state, scheduled); err != nil {
+				return err
+			}
+		}
+		return s.logEvent("info", "Message scheduled", scheduledMessageSummary(scheduled), scheduled.ID, "")
 	}
 
 	task, publishReq := s.buildPendingTask(state, target, req, callerAgentUUID, callerAgentURI)
@@ -1180,6 +1245,39 @@ func (s *Service) publishResultToCaller(ctx context.Context, state AppState, pen
 	return err
 }
 
+func (s *Service) publishScheduleAckToCaller(ctx context.Context, state AppState, scheduled ScheduledMessage) error {
+	s.syncHubClient(state)
+	payload := map[string]any{
+		"ok":                true,
+		"scheduled":         true,
+		"schedule_id":       scheduled.ID,
+		"next_run_at":       scheduled.NextRunAt.UTC().Format(time.RFC3339),
+		"frequency":         scheduled.Frequency.String(),
+		"target_agent":      scheduled.TargetAgentDisplayName,
+		"target_agent_uuid": scheduled.TargetAgentUUID,
+		"target_agent_uri":  scheduled.TargetAgentURI,
+	}
+	_, err := s.hub.PublishOpenClaw(ctx, state.Session.AgentToken, hub.PublishRequest{
+		ToAgentUUID: scheduled.CallerAgentUUID,
+		ToAgentURI:  scheduled.CallerAgentURI,
+		ClientMsgID: NewID("result"),
+		Message: hub.OpenClawMessage{
+			Protocol:      openClawHTTPProtocol,
+			Type:          openClawSkillResult,
+			Timestamp:     time.Now().UTC().Format(time.RFC3339),
+			SkillName:     scheduled.OriginalSkillName,
+			RequestID:     scheduled.ParentRequestID,
+			ReplyTo:       scheduled.CallerRequestID,
+			PayloadFormat: "json",
+			Payload:       payload,
+			OK:            boolPtr(true),
+			Status:        "scheduled",
+		},
+	})
+	s.noteHubInteraction(err, ConnectionTransportHTTP)
+	return err
+}
+
 func (s *Service) buildPendingTask(state AppState, target ConnectedAgent, req DispatchRequest, callerAgentUUID, callerAgentURI string) (PendingTask, hub.PublishRequest) {
 	now := time.Now().UTC()
 	timeout := req.Timeout
@@ -1232,6 +1330,187 @@ func (s *Service) buildPendingTask(state AppState, target ConnectedAgent, req Di
 		ClientMsgID: childRequestID,
 		Message:     message,
 	}
+}
+
+func (s *Service) scheduleDispatch(state AppState, target ConnectedAgent, req DispatchRequest, callerAgentUUID, callerAgentURI string) (ScheduledMessage, error) {
+	now := time.Now().UTC()
+	nextRunAt := req.ScheduledAt.UTC()
+	if nextRunAt.IsZero() {
+		nextRunAt = now
+	}
+	if req.Frequency < 0 {
+		return ScheduledMessage{}, errors.New("schedule frequency must be positive")
+	}
+	payload := normalizePayload(req.Payload, req.Repo, req.LogPaths)
+	payloadFormat := normalizePayloadFormat(req.PayloadFormat, payload)
+	scheduled := ScheduledMessage{
+		ID:                     NewID("schedule"),
+		Status:                 ScheduledMessageStatusActive,
+		ParentRequestID:        req.RequestID,
+		OriginalSkillName:      req.SkillName,
+		TargetAgentRef:         req.TargetAgentRef,
+		TargetAgentDisplayName: ConnectedAgentDisplayName(target),
+		TargetAgentEmoji:       coalesceTrimmed(ConnectedAgentEmoji(target), "🙂"),
+		TargetAgentUUID:        target.AgentUUID,
+		TargetAgentURI:         target.URI,
+		CallerAgentUUID:        callerAgentUUID,
+		CallerAgentURI:         callerAgentURI,
+		CallerRequestID:        req.RequestID,
+		Repo:                   req.Repo,
+		LogPaths:               support.CompactStrings(req.LogPaths),
+		CreatedAt:              now,
+		NextRunAt:              nextRunAt,
+		Frequency:              req.Frequency,
+		DispatchPayload:        payload,
+		DispatchPayloadFormat:  payloadFormat,
+		Timeout:                req.Timeout,
+	}
+	if err := s.store.Update(func(current *AppState) error {
+		current.ScheduledMessages = append(current.ScheduledMessages, scheduled)
+		return nil
+	}); err != nil {
+		return ScheduledMessage{}, err
+	}
+	return scheduled, nil
+}
+
+func (s *Service) processDueScheduledMessages(ctx context.Context) error {
+	state := s.store.Snapshot()
+	if strings.TrimSpace(state.Session.AgentToken) == "" || len(state.ScheduledMessages) == 0 {
+		return nil
+	}
+	now := time.Now().UTC()
+	var combinedErr error
+	for _, scheduled := range state.ScheduledMessages {
+		if scheduled.NextRunAt.IsZero() || scheduled.NextRunAt.After(now) {
+			continue
+		}
+		if err := s.dispatchScheduledMessage(ctx, state, scheduled, now); err != nil {
+			combinedErr = errors.Join(combinedErr, err)
+		}
+	}
+	return combinedErr
+}
+
+func (s *Service) dispatchScheduledMessage(ctx context.Context, state AppState, scheduled ScheduledMessage, now time.Time) error {
+	req := DispatchRequest{
+		RequestID:      scheduled.ParentRequestID,
+		TargetAgentRef: support.FirstNonEmptyString(scheduled.TargetAgentUUID, scheduled.TargetAgentURI, scheduled.TargetAgentRef),
+		SkillName:      scheduled.OriginalSkillName,
+		Repo:           scheduled.Repo,
+		LogPaths:       scheduled.LogPaths,
+		Payload:        scheduled.DispatchPayload,
+		PayloadFormat:  scheduled.DispatchPayloadFormat,
+		Timeout:        scheduled.Timeout,
+	}
+	target, req, err := s.prepareDispatchRequest(state, req)
+	if err != nil {
+		pending := pendingFromScheduledMessage(scheduled, state)
+		if failureErr := s.handleTaskFailure(ctx, state, pending, failureFromError("Scheduled message dispatch failed before it reached a connected agent.", err)); failureErr != nil {
+			err = errors.Join(err, failureErr)
+		}
+		return errors.Join(err, s.advanceScheduledMessage(scheduled.ID, now))
+	}
+	task, publishReq := s.buildPendingTask(state, target, req, scheduled.CallerAgentUUID, scheduled.CallerAgentURI)
+	if err := s.writeTaskLog(task.LogPath, map[string]any{
+		"phase":       PendingTaskStatusSending,
+		"schedule_id": scheduled.ID,
+		"task_id":     task.ID,
+		"request":     req,
+	}); err != nil {
+		return err
+	}
+	if err := s.store.Update(func(current *AppState) error {
+		current.PendingTasks = append(current.PendingTasks, task)
+		return nil
+	}); err != nil {
+		return err
+	}
+	if _, err := s.hub.PublishOpenClaw(ctx, state.Session.AgentToken, publishReq); err != nil {
+		s.noteHubInteraction(err, ConnectionTransportHTTP)
+		failureErr := s.handleTaskFailure(ctx, state, task, failureFromError("Scheduled message dispatch failed before it reached a connected agent.", err))
+		removeErr := s.removePendingTask(task.ChildRequestID)
+		return errors.Join(failureErr, removeErr, s.advanceScheduledMessage(scheduled.ID, now), err)
+	}
+	s.noteHubInteraction(nil, ConnectionTransportHTTP)
+	if err := s.setPendingTaskStatus(task.ChildRequestID, PendingTaskStatusInQueue); err != nil {
+		return err
+	}
+	if err := s.advanceScheduledMessage(scheduled.ID, now); err != nil {
+		return err
+	}
+	return s.logTaskEvent("info", "Scheduled message dispatched", fmt.Sprintf("Queued %s for %s", req.SkillName, connectedAgentNameOrRef(target)), task)
+}
+
+func pendingFromScheduledMessage(scheduled ScheduledMessage, state AppState) PendingTask {
+	taskID := NewID("task")
+	return PendingTask{
+		ID:                     taskID,
+		Status:                 PendingTaskStatusSending,
+		ParentRequestID:        scheduled.ParentRequestID,
+		OriginalSkillName:      scheduled.OriginalSkillName,
+		TargetAgentDisplayName: scheduled.TargetAgentDisplayName,
+		TargetAgentEmoji:       scheduled.TargetAgentEmoji,
+		TargetAgentUUID:        scheduled.TargetAgentUUID,
+		TargetAgentURI:         scheduled.TargetAgentURI,
+		CallerAgentUUID:        scheduled.CallerAgentUUID,
+		CallerAgentURI:         scheduled.CallerAgentURI,
+		CallerRequestID:        scheduled.CallerRequestID,
+		Repo:                   scheduled.Repo,
+		LogPath:                filepath.Join(state.Settings.DataDir, "logs", taskID+".log"),
+		CreatedAt:              time.Now().UTC(),
+		DispatchPayload:        scheduled.DispatchPayload,
+		DispatchPayloadFormat:  scheduled.DispatchPayloadFormat,
+	}
+}
+
+func (s *Service) advanceScheduledMessage(scheduleID string, now time.Time) error {
+	return s.store.Update(func(current *AppState) error {
+		filtered := current.ScheduledMessages[:0]
+		for _, scheduled := range current.ScheduledMessages {
+			if scheduled.ID != scheduleID {
+				filtered = append(filtered, scheduled)
+				continue
+			}
+			if scheduled.Frequency <= 0 {
+				continue
+			}
+			scheduled.LastRunAt = now.UTC()
+			nextRunAt := scheduled.NextRunAt
+			if nextRunAt.IsZero() {
+				nextRunAt = now.UTC()
+			}
+			for !nextRunAt.After(now) {
+				nextRunAt = nextRunAt.Add(scheduled.Frequency)
+			}
+			scheduled.NextRunAt = nextRunAt
+			filtered = append(filtered, scheduled)
+		}
+		current.ScheduledMessages = filtered
+		return nil
+	})
+}
+
+func (s *Service) nextScheduleDelay() time.Duration {
+	state := s.store.Snapshot()
+	delay := s.pollInterval()
+	now := time.Now().UTC()
+	for _, scheduled := range state.ScheduledMessages {
+		if scheduled.NextRunAt.IsZero() {
+			return 0
+		}
+		until := time.Until(scheduled.NextRunAt)
+		if scheduled.NextRunAt.Before(now) {
+			return 0
+		}
+		if until < delay {
+			delay = until
+		}
+	}
+	if delay < time.Second {
+		return time.Second
+	}
+	return delay
 }
 
 func boolPtr(value bool) *bool {
@@ -1419,6 +1698,8 @@ type dispatchPayload struct {
 	LogPaths        []string `json:"log_paths"`
 	Payload         any      `json:"payload"`
 	PayloadFormat   string   `json:"payload_format"`
+	ScheduledAt     time.Time
+	Frequency       time.Duration
 	raw             map[string]any
 }
 
@@ -1467,6 +1748,7 @@ func (p *dispatchPayload) fromMap(raw map[string]any) {
 			"target_agent_ref", "targetAgentRef",
 			"selected_agent_ref", "selectedAgentRef",
 			"agent_ref", "agentRef",
+			"agent",
 		),
 		TargetAgentUUID: stringFromMap(
 			raw,
@@ -1492,8 +1774,10 @@ func (p *dispatchPayload) fromMap(raw map[string]any) {
 		),
 		Repo:          stringFromMap(raw, "repo"),
 		LogPaths:      support.StringSliceFromAny(firstMapValue(raw, "log_paths", "logPaths")),
-		Payload:       firstMapValue(raw, "payload"),
+		Payload:       firstMapValue(raw, "payload", "message", "messages"),
 		PayloadFormat: stringFromMap(raw, "payload_format", "payloadFormat"),
+		ScheduledAt:   timeFromAny(firstMapValue(raw, "scheduled_at", "scheduledAt", "schedule_at", "scheduleAt", "run_at", "runAt", "start_at", "startAt")),
+		Frequency:     durationFromAny(firstMapValue(raw, "frequency", "recurring_frequency", "recurringFrequency", "interval", "every")),
 		raw:           raw,
 	}
 }
@@ -1542,6 +1826,7 @@ func (p dispatchPayload) TaskPayload() (any, error) {
 func dispatchPayloadControlField(key string) bool {
 	switch strings.ToLower(strings.TrimSpace(key)) {
 	case "target_agent_ref", "targetagentref",
+		"agent",
 		"selected_agent_ref", "selectedagentref",
 		"agent_ref", "agentref",
 		"target_agent_uuid", "targetagentuuid",
@@ -1557,11 +1842,100 @@ func dispatchPayloadControlField(key string) bool {
 		"repo",
 		"log_paths", "logpaths",
 		"payload",
+		"message", "messages",
 		"payload_format", "payloadformat":
+		return true
+	case "scheduled_at", "scheduledat",
+		"schedule_at", "scheduleat",
+		"run_at", "runat",
+		"start_at", "startat",
+		"frequency",
+		"recurring_frequency", "recurringfrequency",
+		"interval", "every":
 		return true
 	default:
 		return false
 	}
+}
+
+func isScheduledDispatch(req DispatchRequest) bool {
+	return !req.ScheduledAt.IsZero() || req.Frequency > 0
+}
+
+func scheduledMessageSummary(scheduled ScheduledMessage) string {
+	summary := fmt.Sprintf("Scheduled %s for %s at %s", scheduled.OriginalSkillName, scheduled.TargetAgentDisplayName, scheduled.NextRunAt.UTC().Format(time.RFC3339))
+	if scheduled.Frequency > 0 {
+		summary += " every " + scheduled.Frequency.String()
+	}
+	return summary
+}
+
+func timeFromAny(value any) time.Time {
+	switch typed := value.(type) {
+	case time.Time:
+		return typed.UTC()
+	case string:
+		trimmed := strings.TrimSpace(typed)
+		if trimmed == "" {
+			return time.Time{}
+		}
+		for _, layout := range []string{time.RFC3339Nano, time.RFC3339, "2006-01-02 15:04:05", "2006-01-02 15:04"} {
+			if parsed, err := time.Parse(layout, trimmed); err == nil {
+				return parsed.UTC()
+			}
+		}
+		if duration := durationFromAny(trimmed); duration > 0 {
+			return time.Now().UTC().Add(duration)
+		}
+	case json.Number:
+		if seconds, err := typed.Int64(); err == nil && seconds > 0 {
+			return time.Unix(seconds, 0).UTC()
+		}
+	case float64:
+		if typed > 0 {
+			return time.Unix(int64(typed), 0).UTC()
+		}
+	case int64:
+		if typed > 0 {
+			return time.Unix(typed, 0).UTC()
+		}
+	case int:
+		if typed > 0 {
+			return time.Unix(int64(typed), 0).UTC()
+		}
+	}
+	return time.Time{}
+}
+
+func durationFromAny(value any) time.Duration {
+	switch typed := value.(type) {
+	case time.Duration:
+		return typed
+	case string:
+		trimmed := strings.TrimSpace(typed)
+		if trimmed == "" {
+			return 0
+		}
+		if duration, err := time.ParseDuration(trimmed); err == nil {
+			return duration
+		}
+		seconds, err := strconv.ParseFloat(trimmed, 64)
+		if err == nil {
+			return time.Duration(seconds * float64(time.Second))
+		}
+	case json.Number:
+		seconds, err := typed.Float64()
+		if err == nil {
+			return time.Duration(seconds * float64(time.Second))
+		}
+	case float64:
+		return time.Duration(typed * float64(time.Second))
+	case int64:
+		return time.Duration(typed) * time.Second
+	case int:
+		return time.Duration(typed) * time.Second
+	}
+	return 0
 }
 
 func normalizeDispatchTaskPayload(payload any, payloadFormat string) (any, error) {

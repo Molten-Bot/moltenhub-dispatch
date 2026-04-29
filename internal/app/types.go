@@ -21,6 +21,8 @@ const (
 	PendingTaskStatusSending = "sending"
 	PendingTaskStatusInQueue = "in_queue"
 
+	ScheduledMessageStatusActive = "active"
+
 	DispatchSelectionRequiredMessage = "Please select agent, skill to dispatch a request."
 )
 
@@ -116,14 +118,39 @@ type PendingTask struct {
 	ExecutionRetryCount    int            `json:"execution_retry_count"`
 }
 
+type ScheduledMessage struct {
+	ID                     string         `json:"id"`
+	Status                 string         `json:"status"`
+	ParentRequestID        string         `json:"parent_request_id"`
+	OriginalSkillName      string         `json:"original_skill_name"`
+	TargetAgentRef         string         `json:"target_agent_ref"`
+	TargetAgentDisplayName string         `json:"target_agent_display_name"`
+	TargetAgentEmoji       string         `json:"target_agent_emoji"`
+	TargetAgentUUID        string         `json:"target_agent_uuid"`
+	TargetAgentURI         string         `json:"target_agent_uri"`
+	CallerAgentUUID        string         `json:"caller_agent_uuid"`
+	CallerAgentURI         string         `json:"caller_agent_uri"`
+	CallerRequestID        string         `json:"caller_request_id"`
+	Repo                   string         `json:"repo"`
+	LogPaths               []string       `json:"log_paths"`
+	CreatedAt              time.Time      `json:"created_at"`
+	NextRunAt              time.Time      `json:"next_run_at"`
+	LastRunAt              time.Time      `json:"last_run_at,omitempty"`
+	Frequency              time.Duration  `json:"frequency"`
+	DispatchPayload        map[string]any `json:"dispatch_payload"`
+	DispatchPayloadFormat  string         `json:"dispatch_payload_format"`
+	Timeout                time.Duration  `json:"timeout"`
+}
+
 type AppState struct {
-	Settings        Settings         `json:"settings"`
-	Session         Session          `json:"session"`
-	Connection      ConnectionState  `json:"connection"`
-	Flash           FlashMessage     `json:"flash"`
-	ConnectedAgents []ConnectedAgent `json:"connected_agents"`
-	PendingTasks    []PendingTask    `json:"pending_tasks"`
-	RecentEvents    []RuntimeEvent   `json:"recent_events"`
+	Settings          Settings           `json:"settings"`
+	Session           Session            `json:"session"`
+	Connection        ConnectionState    `json:"connection"`
+	Flash             FlashMessage       `json:"flash"`
+	ConnectedAgents   []ConnectedAgent   `json:"connected_agents"`
+	PendingTasks      []PendingTask      `json:"pending_tasks"`
+	ScheduledMessages []ScheduledMessage `json:"scheduled_messages"`
+	RecentEvents      []RuntimeEvent     `json:"recent_events"`
 }
 
 type BindProfile struct {
@@ -152,4 +179,6 @@ type DispatchRequest struct {
 	Payload        any
 	PayloadFormat  string
 	Timeout        time.Duration
+	ScheduledAt    time.Time
+	Frequency      time.Duration
 }
