@@ -234,6 +234,19 @@ func (c *Client) GetCapabilities(ctx context.Context, token string) (map[string]
 }
 
 func (c *Client) PublishOpenClaw(ctx context.Context, token string, req PublishRequest) (PublishResponse, error) {
+	if c.canPublishOpenClawViaA2A(req) {
+		out, err := c.publishOpenClawViaA2A(ctx, token, req)
+		if err == nil {
+			return out, nil
+		}
+		if !shouldFallbackOpenClawPublish(err) {
+			return PublishResponse{}, fmt.Errorf("a2a publish: %w", err)
+		}
+	}
+	return c.publishOpenClawHTTP(ctx, token, req)
+}
+
+func (c *Client) publishOpenClawHTTP(ctx context.Context, token string, req PublishRequest) (PublishResponse, error) {
 	var out PublishResponse
 	err := c.doJSON(ctx, http.MethodPost, c.runtimeEndpoint(c.endpoints.OpenClawPushURL, "/v1/openclaw/messages/publish"), token, req, &out)
 	return out, err
