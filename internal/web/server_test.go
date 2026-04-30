@@ -976,6 +976,15 @@ func TestHandleIndexShowsBoundProfileState(t *testing.T) {
 	if !strings.Contains(body, `id="skill-payload-format-input" type="hidden" name="payload_format"`) {
 		t.Fatalf("expected manual dispatch payload format field, body=%s", body)
 	}
+	if !strings.Contains(body, `id="dispatch-delay-input"`) || !strings.Contains(body, `name="client_delay"`) {
+		t.Fatalf("expected manual dispatch client-side delay field, body=%s", body)
+	}
+	if !strings.Contains(body, `const parseClientDispatchDelay = (value) => {`) {
+		t.Fatalf("expected manual dispatch client-side delay parser, body=%s", body)
+	}
+	if !strings.Contains(body, `window.setTimeout(() => {`) || !strings.Contains(body, `result: "scheduled_client"`) {
+		t.Fatalf("expected manual dispatch client-side scheduled submit path, body=%s", body)
+	}
 	if !strings.Contains(body, `const detectSkillPayloadFormat = (value) => {`) {
 		t.Fatalf("expected automatic payload format detection helper in client script, body=%s", body)
 	}

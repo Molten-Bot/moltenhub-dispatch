@@ -161,6 +161,11 @@
                 <span id="skill-payload-validation" class="manual-dispatch-payload-validation" aria-live="polite"></span>
               </label>
               <input id="skill-payload-format-input" type="hidden" name="payload_format" value="">
+              <label class="prompt-field manual-dispatch-delay-field">
+                <span class="prompt-label">Delay</span>
+                <input id="dispatch-delay-input" class="prompt-control" type="text" name="client_delay" placeholder="now, 10m, in 2h" autocomplete="off" aria-describedby="dispatch-delay-hint">
+                <span id="dispatch-delay-hint" class="manual-dispatch-delay-hint">Use minutes or hours. Delayed sends run in this browser.</span>
+              </label>
               <div class="prompt-actions manual-dispatch-actions">
                 <p id="dispatch-submit-status" class="connected-agents-refresh-status submit-status" aria-live="polite"></p>
                 <div class="prompt-actions-end">
@@ -427,6 +432,7 @@
       const skillPayloadHint = document.getElementById("skill-payload-hint");
       const skillPayloadValidation = document.getElementById("skill-payload-validation");
       const skillPayloadFormatInput = document.getElementById("skill-payload-format-input");
+      const dispatchDelayInput = document.getElementById("dispatch-delay-input");
       const trimmedString = (value) => String(value || "").trim();
       const defaultSkillPayloadPlaceholder = skillPayloadInput instanceof HTMLTextAreaElement
         ? trimmedString(skillPayloadInput.getAttribute("data-default-placeholder")) || "Describe the task or paste a JSON payload."
@@ -1890,6 +1896,8 @@
       };
       let dispatchRequestInFlight = false;
       let dispatchStatusClearTimer = 0;
+      let clientScheduledDispatchCount = 0;
+      const MAX_CLIENT_DISPATCH_DELAY_MS = 2147483647;
 
       const setDispatchSubmitBusy = (busy) => {
         if (dispatchTaskClear instanceof HTMLButtonElement) {
@@ -1926,6 +1934,27 @@
           dispatchSubmitStatus.classList.remove("is-error");
           dispatchStatusClearTimer = 0;
         }, 12000);
+      };
+
+      const parseClientDispatchDelay = (value) => {
+        const raw = trimmedString(value).toLowerCase();
+        if (raw === "" || raw === "0" || raw === "now") {
+          return { ok: true, delayMs: 0, label: "" };
+        }
+        const match = raw.match(/^(?:in\s+)?(\d+(?:\.\d+)?)\s*([mh])$/);
+        if (!match) {
+          return { ok: false, message: "Delay must be 10m, 2h, or blank." };
+        }
+        const amount = Number.parseFloat(match[1]);
+        if (!Number.isFinite(amount) || amount <= 0) {
+          return { ok: false, message: "Delay must be greater than zero." };
+        }
+        const unit = match[2];
+        const delayMs = amount * (unit === "h" ? 60 * 60 * 1000 : 60 * 1000);
+        if (!Number.isFinite(delayMs) || delayMs > MAX_CLIENT_DISPATCH_DELAY_MS) {
+          return { ok: false, message: "Delay must be less than 24 days." };
+        }
+        return { ok: true, delayMs, label: `${amount}${unit}` };
       };
 
       const connectedAgentDisplayName = (agent) => {
@@ -2596,6 +2625,10 @@
         if (skillPayloadFormatInput instanceof HTMLInputElement) {
           skillPayloadFormatInput.value = "";
         }
+        if (dispatchDelayInput instanceof HTMLInputElement) {
+          dispatchDelayInput.value = "";
+          dispatchDelayInput.setCustomValidity("");
+        }
         setSkillPayloadValidationMessage("");
         setDispatchSubmitStatus("");
         syncConnectedAgentSelection({ forceFirstSkill: true });
@@ -2620,7 +2653,55 @@
           has_payload: payload !== "",
           payload_format: payloadFormat || "none",
           has_schema: Boolean(skillEntry && skillEntry.schemaText),
+          has_client_delay: dispatchDelayInput instanceof HTMLInputElement && trimmedString(dispatchDelayInput.value) !== "",
         };
+      };
+
+      const submitDispatchFormData = async (formData, analyticsParams, options = {}) => {
+        const clearForm = !options || options.clearForm !== false;
+        const response = await fetch("/api/dispatch", {
+          method: "POST",
+          headers: { Accept: "application/json" },
+          body: formData,
+        });
+        let body = null;
+        try {
+          body = await response.json();
+        } catch (_parseError) {
+          body = null;
+        }
+        if (!response.ok || !body || body.ok !== true) {
+          const message = trimmedString(body && body.error) || `dispatch request failed with ${response.status}`;
+          setDispatchSubmitStatus(message, true);
+          trackAppEvent("dispatch_result", {
+            ...analyticsParams,
+            result: "failure",
+            http_status: response.status,
+          });
+          return false;
+        }
+        if (clearForm && skillPayloadInput instanceof HTMLTextAreaElement) {
+          setSkillPayloadSchemaText("");
+          skillPayloadInput.value = "";
+        }
+        if (clearForm && skillPayloadFormatInput instanceof HTMLInputElement) {
+          skillPayloadFormatInput.value = "";
+        }
+        if (clearForm) {
+          setSkillPayloadValidationMessage("");
+        }
+        const taskID = trimmedString(body && body.task_id);
+        const isScheduled = Boolean(body && body.scheduled);
+        const successMessage = taskID
+          ? `${isScheduled ? "Scheduled" : "In Queue"}: ${taskID}`
+          : (isScheduled ? "Scheduled." : "In Queue.");
+        setDispatchSubmitStatus(successMessage);
+        trackAppEvent("dispatch_result", {
+          ...analyticsParams,
+          result: "success",
+          http_status: response.status,
+        });
+        return true;
       };
 
       const stopConnectedAgentsAutoRefresh = (_statusText = "") => {
@@ -3236,6 +3317,11 @@
           validateSkillPayload();
         });
       }
+      if (dispatchDelayInput instanceof HTMLInputElement) {
+        dispatchDelayInput.addEventListener("input", () => {
+          dispatchDelayInput.setCustomValidity("");
+        });
+      }
       if (dispatchTaskClear instanceof HTMLButtonElement) {
         dispatchTaskClear.addEventListener("click", () => {
           trackAppEvent("dispatch_clear", dispatchAnalyticsParams());
@@ -3283,13 +3369,27 @@
             }
             return;
           }
+          const clientDelay = parseClientDispatchDelay(dispatchDelayInput instanceof HTMLInputElement ? dispatchDelayInput.value : "");
+          if (!clientDelay.ok) {
+            setDispatchSubmitStatus(clientDelay.message, true);
+            trackAppEvent("dispatch_submit", {
+              ...dispatchAnalyticsParams(dispatchState),
+              result: "invalid_delay",
+            });
+            if (dispatchDelayInput instanceof HTMLInputElement) {
+              dispatchDelayInput.setCustomValidity(clientDelay.message);
+              dispatchDelayInput.reportValidity();
+              dispatchDelayInput.focus({ preventScroll: true });
+            }
+            return;
+          }
+          if (dispatchDelayInput instanceof HTMLInputElement) {
+            dispatchDelayInput.setCustomValidity("");
+          }
           if (dispatchRequestInFlight) {
             return;
           }
           const analyticsParams = dispatchAnalyticsParams(dispatchState);
-          dispatchRequestInFlight = true;
-          setDispatchSubmitBusy(true);
-          setDispatchSubmitStatus("Sending...");
           trackAppEvent("dispatch_submit", {
             ...analyticsParams,
             result: "started",
@@ -3297,6 +3397,7 @@
           try {
             const formData = new FormData(manualDispatchForm);
             formData.set("target_agent_ref", dispatchState.targetRef);
+            formData.delete("client_delay");
             if (dispatchState.skillName !== "") {
               formData.set("skill_name", dispatchState.skillName);
             } else {
@@ -3306,46 +3407,31 @@
               formData.delete("payload");
               formData.delete("payload_format");
             }
-            const response = await fetch("/api/dispatch", {
-              method: "POST",
-              headers: { Accept: "application/json" },
-              body: formData,
-            });
-            let body = null;
-            try {
-              body = await response.json();
-            } catch (_parseError) {
-              body = null;
-            }
-            if (!response.ok || !body || body.ok !== true) {
-              const message = trimmedString(body && body.error) || `dispatch request failed with ${response.status}`;
-              setDispatchSubmitStatus(message, true);
+            if (clientDelay.delayMs > 0) {
+              clientScheduledDispatchCount += 1;
+              const scheduledNumber = clientScheduledDispatchCount;
+              window.setTimeout(() => {
+                setDispatchSubmitStatus(`Sending delayed dispatch #${scheduledNumber}...`);
+                void submitDispatchFormData(formData, analyticsParams, { clearForm: false }).catch((error) => {
+                  const message = error instanceof Error ? error.message : "Unable to dispatch task.";
+                  setDispatchSubmitStatus(message, true);
+                  trackAppEvent("dispatch_result", {
+                    ...analyticsParams,
+                    result: "network_error",
+                  });
+                });
+              }, clientDelay.delayMs);
+              setDispatchSubmitStatus(`Dispatch #${scheduledNumber} scheduled in ${clientDelay.label}. Keep this page open.`);
               trackAppEvent("dispatch_result", {
                 ...analyticsParams,
-                result: "failure",
-                http_status: response.status,
+                result: "scheduled_client",
               });
               return;
             }
-            if (skillPayloadInput instanceof HTMLTextAreaElement) {
-              setSkillPayloadSchemaText("");
-              skillPayloadInput.value = "";
-            }
-            if (skillPayloadFormatInput instanceof HTMLInputElement) {
-              skillPayloadFormatInput.value = "";
-            }
-            setSkillPayloadValidationMessage("");
-            const taskID = trimmedString(body && body.task_id);
-            const isScheduled = Boolean(body && body.scheduled);
-            const successMessage = taskID
-              ? `${isScheduled ? "Scheduled" : "In Queue"}: ${taskID}`
-              : (isScheduled ? "Scheduled." : "In Queue.");
-            setDispatchSubmitStatus(successMessage);
-            trackAppEvent("dispatch_result", {
-              ...analyticsParams,
-              result: "success",
-              http_status: response.status,
-            });
+            dispatchRequestInFlight = true;
+            setDispatchSubmitBusy(true);
+            setDispatchSubmitStatus("Sending...");
+            await submitDispatchFormData(formData, analyticsParams);
           } catch (error) {
             const message = error instanceof Error ? error.message : "Unable to dispatch task.";
             setDispatchSubmitStatus(message, true);
