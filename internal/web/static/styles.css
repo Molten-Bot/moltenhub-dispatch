@@ -3712,6 +3712,17 @@ p,
   color: var(--surface-danger);
 }
 
+.manual-dispatch-delay-field {
+  max-width: 18rem;
+}
+
+.manual-dispatch-delay-hint {
+  margin: -2px 0 0;
+  color: var(--meta);
+  font-size: 0.79rem;
+  line-height: 1.4;
+}
+
 label {
   display: grid;
   gap: 6px;
@@ -5522,6 +5533,7 @@ legend {
 .manual-dispatch-skill-hint,
 .manual-dispatch-payload-hint,
 .manual-dispatch-payload-validation,
+.manual-dispatch-delay-hint,
 .connected-agents-refresh-status {
   font-family: var(--font-family);
   font-size: var(--text-base);
