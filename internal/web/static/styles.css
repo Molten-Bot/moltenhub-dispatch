@@ -3718,6 +3718,8 @@ p,
 
 .manual-dispatch-delay-item {
   display: grid;
+  grid-template-columns: minmax(130px, 220px) minmax(0, 1fr);
+  align-items: center;
   gap: 6px;
   min-width: 0;
   margin: 0;
@@ -3881,14 +3883,13 @@ p,
 .manual-dispatch-delay-field {
   grid-template-columns: minmax(0, 1fr);
   align-items: start;
-  max-width: 24rem;
 }
 
 .manual-dispatch-schedule-mode-toggle {
   display: inline-grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 4px;
-  width: min(100%, 220px);
+  width: 100%;
   padding: 3px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -3922,13 +3923,17 @@ p,
 
 .manual-dispatch-schedule-value-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 6.5rem;
+  grid-template-columns: minmax(4.5rem, 1fr) minmax(5.8rem, 6.5rem);
   gap: 8px;
   min-width: 0;
 }
 
 .manual-dispatch-schedule-unit {
-  min-width: 6.5rem;
+  min-width: 0;
+}
+
+.manual-dispatch-delay-item .manual-dispatch-delay-hint {
+  grid-column: 1 / -1;
 }
 
 label {

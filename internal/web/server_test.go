@@ -3389,6 +3389,26 @@ func TestPromptFieldHiddenAttributeOverridesGridDisplay(t *testing.T) {
 	}
 }
 
+func TestManualDispatchScheduleControlsShareOneRow(t *testing.T) {
+	t.Parallel()
+
+	styles, err := os.ReadFile("static/styles.css")
+	if err != nil {
+		t.Fatalf("read styles.css: %v", err)
+	}
+
+	content := string(styles)
+	if !strings.Contains(content, ".manual-dispatch-delay-item {\n  display: grid;\n  grid-template-columns: minmax(130px, 220px) minmax(0, 1fr);") {
+		t.Fatalf("expected schedule mode and value controls to share one grid row")
+	}
+	if !strings.Contains(content, ".manual-dispatch-schedule-value-row {\n  display: grid;\n  grid-template-columns: minmax(4.5rem, 1fr) minmax(5.8rem, 6.5rem);") {
+		t.Fatalf("expected amount and unit controls to stay in the same row")
+	}
+	if !strings.Contains(content, ".manual-dispatch-delay-item .manual-dispatch-delay-hint {\n  grid-column: 1 / -1;\n}") {
+		t.Fatalf("expected schedule hint to span below the single-line controls")
+	}
+}
+
 func TestHandleIndexRendersInteractiveOnboardingFlowForUnboundSession(t *testing.T) {
 	t.Parallel()
 
