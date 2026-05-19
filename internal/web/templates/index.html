@@ -625,6 +625,7 @@
       const CONNECTED_AGENTS_REFRESH_TICK_MS = 250;
       const LUCIDE_ICON_ATTR = "data-lucide";
       const ANALYTICS_APP_NAME = "moltenhub_dispatch";
+      const ANALYTICS_PENDING_ACTION_KEY = "hubui.pending_analytics_action";
 
       const analyticsValue = (value, fallback = "") => {
         if (typeof value === "string") {
@@ -704,6 +705,73 @@
           tracked = true;
           trackAppEvent(eventName, typeof paramsFactory === "function" ? paramsFactory() : {});
         };
+      };
+
+      const analyticsPagePath = () => window.location.pathname || "/";
+
+      const analyticsPageLocation = () => {
+        const origin = trimmedString(window.location.origin);
+        return origin === "" ? analyticsPagePath() : `${origin}${analyticsPagePath()}`;
+      };
+
+      const rememberAnalyticsServerAction = (actionName) => {
+        const name = analyticsSlug(actionName, "");
+        if (name === "") {
+          return;
+        }
+        try {
+          window.sessionStorage?.setItem(ANALYTICS_PENDING_ACTION_KEY, JSON.stringify({
+            action_name: name,
+            at: Date.now(),
+          }));
+        } catch (_err) {
+          // Ignore storage failures.
+        }
+      };
+
+      const consumeAnalyticsServerAction = () => {
+        let raw = "";
+        try {
+          raw = window.sessionStorage?.getItem(ANALYTICS_PENDING_ACTION_KEY) || "";
+          window.sessionStorage?.removeItem(ANALYTICS_PENDING_ACTION_KEY);
+        } catch (_err) {
+          return "";
+        }
+        if (raw === "") {
+          return "";
+        }
+        try {
+          const payload = JSON.parse(raw);
+          const ageMs = Date.now() - Number(payload && payload.at);
+          if (!Number.isFinite(ageMs) || ageMs < 0 || ageMs > 5 * 60 * 1000) {
+            return "";
+          }
+          return analyticsSlug(payload && payload.action_name, "");
+        } catch (_err) {
+          return "";
+        }
+      };
+
+      const trackAnalyticsServerActionResult = () => {
+        const actionName = consumeAnalyticsServerAction();
+        if (actionName === "") {
+          return;
+        }
+        if (!(flash instanceof HTMLElement)) {
+          return;
+        }
+        const isError = flash.classList.contains("flash-error");
+        const eventNameByAction = {
+          agent_disconnect: "agent_disconnect_result",
+          agent_profile_save: "agent_profile_result",
+        };
+        const eventName = eventNameByAction[actionName] || "server_action_result";
+        trackAppEvent(eventName, {
+          app_area: "agent_settings",
+          action_name: actionName,
+          result: isError ? "failure" : "success",
+          source: "server_redirect",
+        });
       };
 
       const lucideAvailable = () => {
@@ -1441,12 +1509,15 @@
         if (!googleAnalyticsMeasurementID || typeof window.gtag !== "function") {
           return;
         }
+        const connectedAgentCount = Number.parseInt(shell?.dataset.connectedAgentCount || "0", 10);
         window.gtag("event", "page_view", {
           send_to: googleAnalyticsMeasurementID,
           app_name: ANALYTICS_APP_NAME,
           page_title: document.title,
-          page_location: window.location.href,
-          page_path: `${window.location.pathname}${window.location.search}`,
+          page_location: analyticsPageLocation(),
+          page_path: analyticsPagePath(),
+          bound: shell?.dataset.bound === "true",
+          connected_agent_count: Number.isFinite(connectedAgentCount) ? connectedAgentCount : 0,
         });
       };
 
@@ -1679,6 +1750,7 @@
       hydrateLucideIcons(document);
       initAppearanceControls();
       trackInitialPageView();
+      trackAnalyticsServerActionResult();
 
       document.querySelectorAll("[data-hub-emoji-picker]").forEach((picker) => {
         if (picker instanceof HTMLElement) {
@@ -1815,6 +1887,7 @@
           const disconnecting = action === "/disconnect";
           const submitAfterAnalytics = () => {
             agentProfileSubmitAfterAnalytics = true;
+            rememberAnalyticsServerAction(disconnecting ? "agent_disconnect" : "agent_profile_save");
             try {
               if (typeof bindForm.requestSubmit === "function" && submitter instanceof HTMLElement && submitter.form === bindForm) {
                 bindForm.requestSubmit(submitter);
@@ -1854,6 +1927,31 @@
         onboardingModeField instanceof HTMLInputElement ? onboardingModeField.value : "existing",
       );
       const currentOnboardingMode = () => onboardingModeState;
+      if (bindForm instanceof HTMLFormElement) {
+        bindForm.addEventListener("invalid", (event) => {
+          const field = event.target;
+          if (!(field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement || field instanceof HTMLSelectElement)) {
+            return;
+          }
+          const fieldName = analyticsSlug(field.getAttribute("name") || field.id, "unknown");
+          if (!bound) {
+            const checkedRegion = document.querySelector("input[name=\"hub_region\"]:checked");
+            trackAppEvent("onboarding_validation_failure", {
+              app_area: "onboarding",
+              field_name: fieldName,
+              agent_mode: currentOnboardingMode(),
+              hub_region: checkedRegion instanceof HTMLInputElement
+                ? analyticsSlug(checkedRegion.value, "default")
+                : "default",
+            });
+            return;
+          }
+          trackAppEvent("agent_profile_validation_failure", {
+            app_area: "agent_settings",
+            field_name: fieldName,
+          });
+        }, true);
+      }
       const applyOnboardingMode = (mode, options = {}) => {
         const normalizedMode = normalizedOnboardingMode(mode);
         const previousMode = onboardingModeState;

@@ -306,6 +306,12 @@ func TestHandleIndexRendersGoogleAnalyticsSnippet(t *testing.T) {
 	if !strings.Contains(body, `window.gtag("event", "page_view"`) {
 		t.Fatalf("expected google analytics page_view tracking, body=%s", body)
 	}
+	if !strings.Contains(body, `page_location: analyticsPageLocation(),`) || !strings.Contains(body, `page_path: analyticsPagePath(),`) {
+		t.Fatalf("expected google analytics page view URL sanitization, body=%s", body)
+	}
+	if strings.Contains(body, `page_location: window.location.href`) || strings.Contains(body, "window.location.search") {
+		t.Fatalf("did not expect google analytics page view to include raw query strings, body=%s", body)
+	}
 }
 
 func TestHandleIndexRendersGoogleAnalyticsInteractionEvents(t *testing.T) {
@@ -327,13 +333,20 @@ func TestHandleIndexRendersGoogleAnalyticsInteractionEvents(t *testing.T) {
 	body := rec.Body.String()
 	for _, want := range []string{
 		`const ANALYTICS_APP_NAME = "moltenhub_dispatch";`,
+		`const ANALYTICS_PENDING_ACTION_KEY = "hubui.pending_analytics_action";`,
 		`const trackAppEvent = (eventName, params = {}, options = {}) => {`,
 		`const trackOnce = (eventName, paramsFactory = () => ({})) => {`,
+		`const rememberAnalyticsServerAction = (actionName) => {`,
+		`const trackAnalyticsServerActionResult = () => {`,
 		`window.gtag("event", name, eventParams);`,
 		`return true;`,
 		`trackAppEvent("theme_change"`,
 		`trackAppEvent("agent_settings_open"`,
+		`trackAnalyticsServerActionResult();`,
 		`trackOnce("agent_profile_field_edit"`,
+		`rememberAnalyticsServerAction(disconnecting ? "agent_disconnect" : "agent_profile_save");`,
+		`trackAppEvent("onboarding_validation_failure"`,
+		`trackAppEvent("agent_profile_validation_failure"`,
 		`trackAppEvent("onboarding_submit"`,
 		`trackAppEvent("onboarding_region_change"`,
 		`trackOnce("onboarding_token_input"`,
