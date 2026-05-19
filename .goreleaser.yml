@@ -1,0 +1,46 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+version: 2
+
+project_name: moltenhub-dispatch
+
+before:
+  hooks:
+    - go mod download
+
+builds:
+  - id: moltenhub-dispatch
+    main: ./cmd/moltenhub-dispatch
+    binary: moltenhub-dispatch
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - id: moltenhub-dispatch
+    ids:
+      - moltenhub-dispatch
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"
+
+release:
+  prerelease: false
+  make_latest: true
+  header: |
+    Docker image promoted from `{{ .Env.SOURCE_TAG }}` to `latest`.
+
+changelog:
+  sort: asc
