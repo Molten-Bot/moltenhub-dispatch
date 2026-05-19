@@ -76,6 +76,41 @@ func TestAdditionalPrimitiveHelpers(t *testing.T) {
 	}
 }
 
+func TestAdditionalEnvRuntimeHelpers(t *testing.T) {
+	t.Setenv("APP_DATA_DIR", "")
+	t.Setenv(moltenHubTokenEnvVar, "")
+	t.Setenv(moltenHubRegionEnvVar, "")
+	t.Setenv(moltenHubLocalModeEnvVar, "")
+	t.Setenv(moltenHubURLEnvVar, "")
+	t.Setenv(moltenHubAPIBaseEnvVar, "")
+
+	t.Setenv("APP_DATA_DIR:/var/lib/molten", "")
+	if got, ok := envValue("APP_DATA_DIR"); !ok || got != "/var/lib/molten" {
+		t.Fatalf("colon APP_DATA_DIR = %q, %v; want /var/lib/molten, true", got, ok)
+	}
+
+	t.Setenv(moltenHubLocalModeEnvVar, "true")
+	t.Setenv(moltenHubURLEnvVar, "http://127.0.0.1:8080/root/")
+	runtime, err, ok := runtimeFromEnv()
+	if err != nil || !ok {
+		t.Fatalf("runtimeFromEnv local = %#v, %v, %v; want configured local runtime", runtime, err, ok)
+	}
+	if runtime.ID != HubRegionLocal || runtime.HubURL != "http://127.0.0.1:8080" {
+		t.Fatalf("local runtime = %#v", runtime)
+	}
+
+	t.Setenv(moltenHubAPIBaseEnvVar, "http://127.0.0.1:9090/api/")
+	if got := configuredAPIBaseForHub(runtime.HubURL); got != "http://127.0.0.1:9090/api" {
+		t.Fatalf("configuredAPIBaseForHub local override = %q", got)
+	}
+
+	t.Setenv(moltenHubLocalModeEnvVar, "false")
+	t.Setenv(moltenHubRegionEnvVar, "bad-region")
+	if _, err, ok := runtimeFromEnv(); !ok || err == nil {
+		t.Fatalf("runtimeFromEnv bad region err=%v ok=%v, want error and configured", err, ok)
+	}
+}
+
 func TestAdditionalNormalizeOnboardingTokens(t *testing.T) {
 	cases := []struct {
 		name           string
@@ -97,6 +132,34 @@ func TestAdditionalNormalizeOnboardingTokens(t *testing.T) {
 		if gotMode != tc.wantMode || gotBind != tc.wantBindToken || gotAgent != tc.wantAgentToken {
 			t.Fatalf("%s = %q %q %q, want %q %q %q", tc.name, gotMode, gotBind, gotAgent, tc.wantMode, tc.wantBindToken, tc.wantAgentToken)
 		}
+	}
+}
+
+func TestAdditionalDispatchTextHelpers(t *testing.T) {
+	if got := textMessageDetail(hub.OpenClawMessage{Payload: map[string]any{"message": " hi "}}); got != "hi" {
+		t.Fatalf("textMessageDetail map payload = %q, want hi", got)
+	}
+	if got := textMessageDetail(hub.OpenClawMessage{Payload: nil, Input: map[string]any{"content": []string{"a", "b"}}}); got != `["a","b"]` {
+		t.Fatalf("textMessageDetail JSON input = %q", got)
+	}
+	if got := textMessageDetail(hub.OpenClawMessage{}); got != "Received text message." {
+		t.Fatalf("textMessageDetail default = %q", got)
+	}
+	if got := textMessageValue(make(chan int)); got == "" {
+		t.Fatalf("textMessageValue unmarshalable = %q, want fmt fallback", got)
+	}
+
+	uuid, uri := callerTargetFromMessage(hub.PullResponse{FromAgentUUID: " uuid ", FromAgentURI: " uri "})
+	if uuid != "uuid" || uri != "uri" {
+		t.Fatalf("callerTargetFromMessage explicit = %q, %q", uuid, uri)
+	}
+	uuid, uri = callerTargetFromMessage(hub.PullResponse{OpenClawMessage: hub.OpenClawMessage{ReplyTarget: "molten://agent/1"}})
+	if uuid != "" || uri != "molten://agent/1" {
+		t.Fatalf("callerTargetFromMessage URI reply = %q, %q", uuid, uri)
+	}
+	uuid, uri = callerTargetFromMessage(hub.PullResponse{OpenClawMessage: hub.OpenClawMessage{ReplyTarget: "uuid-1"}})
+	if uuid != "uuid-1" || uri != "" {
+		t.Fatalf("callerTargetFromMessage UUID reply = %q, %q", uuid, uri)
 	}
 }
 

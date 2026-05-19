@@ -532,6 +532,96 @@ func TestConnectRuntimeMessagesKeepsIdleConnectionReadingUntilDelivery(t *testin
 	}
 }
 
+func TestWebsocketSessionAckAndNackResponses(t *testing.T) {
+	t.Parallel()
+
+	actions := make(chan map[string]any, 2)
+	server := httptest.NewServer(websocket.Handler(func(conn *websocket.Conn) {
+		defer conn.Close()
+		if err := websocket.JSON.Send(conn, map[string]any{"type": "session_ready"}); err != nil {
+			return
+		}
+		for i := 0; i < 2; i++ {
+			var payload map[string]any
+			if err := websocket.JSON.Receive(conn, &payload); err != nil {
+				return
+			}
+			actions <- payload
+			action, _ := payload["type"].(string)
+			requestID, _ := payload["request_id"].(string)
+			response := map[string]any{
+				"type":       "response",
+				"request_id": requestID,
+				"ok":         action == "ack",
+			}
+			if action != "ack" {
+				response["error"] = map[string]any{"code": "nack_failed", "message": "cannot nack"}
+			}
+			if err := websocket.JSON.Send(conn, response); err != nil {
+				return
+			}
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	session, err := client.ConnectRuntimeMessages(context.Background(), "agent-token", "main")
+	if err != nil {
+		t.Fatalf("ConnectRuntimeMessages() error = %v", err)
+	}
+	defer session.Close()
+
+	if err := session.Ack(context.Background(), "delivery-1"); err != nil {
+		t.Fatalf("Ack() error = %v", err)
+	}
+	if err := session.Nack(context.Background(), "delivery-2"); err == nil || !strings.Contains(err.Error(), "nack_failed") {
+		t.Fatalf("Nack() error = %v, want nack_failed", err)
+	}
+
+	first := <-actions
+	second := <-actions
+	if first["type"] != "ack" || first["delivery_id"] != "delivery-1" {
+		t.Fatalf("first action = %#v", first)
+	}
+	if second["type"] != "nack" || second["delivery_id"] != "delivery-2" {
+		t.Fatalf("second action = %#v", second)
+	}
+}
+
+func TestWebsocketSessionResponseWithoutPendingRequestIsIgnored(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(websocket.Handler(func(conn *websocket.Conn) {
+		defer conn.Close()
+		if err := websocket.JSON.Send(conn, map[string]any{"type": "session_ready"}); err != nil {
+			return
+		}
+		_ = websocket.JSON.Send(conn, map[string]any{"type": "response", "request_id": "missing", "ok": true})
+		_ = websocket.JSON.Send(conn, map[string]any{"type": "delivery", "result": map[string]any{
+			"delivery_id": "delivery-after-response",
+			"message":     map[string]any{"kind": "ack"},
+		}})
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL)
+	session, err := client.ConnectRuntimeMessages(context.Background(), "agent-token", "main")
+	if err != nil {
+		t.Fatalf("ConnectRuntimeMessages() error = %v", err)
+	}
+	defer session.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	message, err := session.Receive(ctx)
+	if err != nil {
+		t.Fatalf("Receive() error = %v", err)
+	}
+	if message.DeliveryID != "delivery-after-response" {
+		t.Fatalf("delivery_id = %q, want delivery-after-response", message.DeliveryID)
+	}
+}
+
 func websocketAcceptKey(key string) string {
 	sum := sha1.Sum([]byte(strings.TrimSpace(key) + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))
 	return base64.StdEncoding.EncodeToString(sum[:])
