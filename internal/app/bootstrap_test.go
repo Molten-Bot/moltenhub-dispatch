@@ -133,6 +133,8 @@ func TestBindFromEnvIfNeededReconnectsExistingAgentTokenEvenWhenSessionAlreadyBo
 }
 
 func TestBindFromEnvIfNeededAcceptsColonSeparatedContainerEnv(t *testing.T) {
+	t.Setenv(moltenHubTokenEnvVar, "")
+	t.Setenv(moltenHubRegionEnvVar, "")
 	t.Setenv(moltenHubTokenEnvVar+":t_env-agent-123", "")
 	t.Setenv(moltenHubRegionEnvVar+":"+HubRegionNA, "")
 
@@ -205,6 +207,7 @@ func TestBindFromEnvIfNeededReportsFailure(t *testing.T) {
 
 func TestBindFromEnvIfNeededRequiresRegion(t *testing.T) {
 	t.Setenv(moltenHubTokenEnvVar, "b_bind-123")
+	t.Setenv(moltenHubRegionEnvVar, "")
 
 	store, err := NewStore(t.TempDir()+"/config.json", DefaultSettings())
 	if err != nil {
