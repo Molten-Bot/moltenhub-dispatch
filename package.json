@@ -1,0 +1,22 @@
+{
+  "name": "moltenhub-dispatch",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test web/skill-payload-form/*.test.mjs",
+    "build:web": "vite build",
+    "verify:web-build": "npm run build:web && git diff --exit-code -- internal/web/static/skill-payload-form"
+  },
+  "dependencies": {
+    "@jsonforms/core": "3.7.0",
+    "@jsonforms/react": "3.7.0",
+    "@jsonforms/vanilla-renderers": "3.7.0",
+    "react": "19.2.6",
+    "react-dom": "19.2.6"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "6.0.2",
+    "vite": "8.0.14"
+  }
+}

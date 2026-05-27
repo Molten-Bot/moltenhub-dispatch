@@ -1307,8 +1307,23 @@ func TestHandleIndexIncludesSkillSchemaPlaceholderSupport(t *testing.T) {
 	server.Handler().ServeHTTP(rec, req)
 
 	body := rec.Body.String()
+	if !strings.Contains(body, `/static/skill-payload-form/skill-payload-form.js`) {
+		t.Fatalf("expected JSONForms skill payload bundle script, body=%s", body)
+	}
+	if !strings.Contains(body, `/static/skill-payload-form/skill-payload-form.css`) {
+		t.Fatalf("expected JSONForms skill payload bundle stylesheet, body=%s", body)
+	}
+	if !strings.Contains(body, `id="skill-payload-mode-field"`) {
+		t.Fatalf("expected payload mode toggle field, body=%s", body)
+	}
+	if !strings.Contains(body, `id="skill-payload-mode-form"`) || !strings.Contains(body, `id="skill-payload-mode-json"`) {
+		t.Fatalf("expected form and JSON payload mode options, body=%s", body)
+	}
+	if !strings.Contains(body, `id="skill-payload-form-root"`) {
+		t.Fatalf("expected JSONForms mount point, body=%s", body)
+	}
 	if !strings.Contains(body, `const skillPayloadHint = document.getElementById("skill-payload-hint");`) {
-		t.Fatalf("expected payload hint hook for schema-aware readonly copy, body=%s", body)
+		t.Fatalf("expected payload hint hook for schema-aware generated form copy, body=%s", body)
 	}
 	if !strings.Contains(body, `const defaultSkillPayloadHint = skillPayloadHint instanceof HTMLElement`) {
 		t.Fatalf("expected default payload hint capture before schema overrides, body=%s", body)
@@ -1316,26 +1331,29 @@ func TestHandleIndexIncludesSkillSchemaPlaceholderSupport(t *testing.T) {
 	if !strings.Contains(body, `const extractSkillSchema = (skill) => {`) {
 		t.Fatalf("expected skill schema extraction helper in client script, body=%s", body)
 	}
-	if !strings.Contains(body, `for (const key of ["schema", "input_schema", "payload_schema", "inputSchema", "payloadSchema", "parameters", "args_schema", "argsSchema"])`) {
+	if !strings.Contains(body, `const skillSchemaAliases = ["schema", "input_schema", "payload_schema", "inputSchema", "payloadSchema", "parameters", "args_schema", "argsSchema"];`) {
 		t.Fatalf("expected schema alias scan in client script, body=%s", body)
 	}
+	if !strings.Contains(body, `const skillUISchemaAliases = ["ui_schema", "uischema", "uiSchema"];`) {
+		t.Fatalf("expected UI schema alias scan in client script, body=%s", body)
+	}
 	if !strings.Contains(body, `schemaText: trimmedString(schemaText),`) {
-		t.Fatalf("expected skill entries to preserve schema text for readonly payload text, body=%s", body)
+		t.Fatalf("expected skill entries to preserve schema text for mode reset keys, body=%s", body)
 	}
-	if !strings.Contains(body, `Required payload schema shown in readonly payload text box. Markdown and JSON are both supported.`) {
-		t.Fatalf("expected schema-specific payload hint copy, body=%s", body)
+	if !strings.Contains(body, `Generated from the selected skill schema. Switch to JSON for raw payload editing.`) {
+		t.Fatalf("expected generated form payload hint copy, body=%s", body)
 	}
-	if !strings.Contains(body, `const setSkillPayloadSchemaText = (schemaText) => {`) {
-		t.Fatalf("expected payload schema text helper in client script, body=%s", body)
+	if !strings.Contains(body, `const skillPayloadFormAPI = () => {`) {
+		t.Fatalf("expected JSONForms bundle bridge helper, body=%s", body)
 	}
-	if !strings.Contains(body, `skillPayloadInput.readOnly = nextSchemaText !== "";`) {
-		t.Fatalf("expected selected skill schema to make payload text readonly, body=%s", body)
+	if !strings.Contains(body, `api.normalizeSkillSchema(skillEntry.schema, skillEntry.uischema)`) {
+		t.Fatalf("expected selected skill schema to be normalized through JSONForms bridge, body=%s", body)
 	}
-	if !strings.Contains(body, `skillPayloadInput.value = nextSchemaText;`) {
-		t.Fatalf("expected selected skill schema to render inside payload text box, body=%s", body)
+	if !strings.Contains(body, `renderSkillPayloadForm(nextData);`) {
+		t.Fatalf("expected selected skill schema to render generated payload form, body=%s", body)
 	}
-	if !strings.Contains(body, `formData.delete("payload");`) || !strings.Contains(body, `formData.delete("payload_format");`) {
-		t.Fatalf("expected readonly schema reference text to be omitted from dispatch payload, body=%s", body)
+	if strings.Contains(body, `formData.delete("payload");`) || strings.Contains(body, `formData.delete("payload_format");`) {
+		t.Fatalf("did not expect generated form payload to be omitted from dispatch, body=%s", body)
 	}
 }
 
@@ -2020,6 +2038,47 @@ func TestHandleDispatchAPIAcceptsJSONPayloadWithTabbedPrompt(t *testing.T) {
 	}
 	if got := payload["prompt"]; got != "Review\tlogs" {
 		t.Fatalf("unexpected prompt payload: %#v", payload)
+	}
+}
+
+func TestHandleDispatchAPIAcceptsGeneratedFormJSONPayload(t *testing.T) {
+	t.Parallel()
+
+	stub := &stubService{
+		dispatchTask: app.PendingTask{ID: "task-1"},
+	}
+	server, err := New(stub)
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+
+	form := url.Values{}
+	form.Set("target_agent_ref", "worker-a")
+	form.Set("skill_name", "code_for_me")
+	form.Set("skill_payload_input_mode", "form")
+	form.Set("payload_format", "json")
+	form.Set("payload", `{"prompt":"Review logs","limit":3}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/dispatch", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 response, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	if got := stub.lastDispatchReq.PayloadFormat; got != "json" {
+		t.Fatalf("expected payload format json, got %#v", stub.lastDispatchReq)
+	}
+	payload, ok := stub.lastDispatchReq.Payload.(map[string]any)
+	if !ok {
+		t.Fatalf("expected JSON payload map, got %T", stub.lastDispatchReq.Payload)
+	}
+	if got := payload["prompt"]; got != "Review logs" {
+		t.Fatalf("unexpected prompt payload: %#v", payload)
+	}
+	if got := payload["limit"]; got != float64(3) {
+		t.Fatalf("unexpected limit payload: %#v", payload)
 	}
 }
 

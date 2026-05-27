@@ -68,7 +68,7 @@ The bundled UI supports:
 
 - First-run onboarding for region, bind token, and profile setup.
 - Connected-agent management and presence display.
-- Manual skill dispatch with Markdown or JSON payloads.
+- Manual skill dispatch with schema-generated forms plus Markdown or JSON payload fallback.
 - Scheduled and recurring dispatches.
 - Pending task status, recent runtime events, and schedule deletion.
 

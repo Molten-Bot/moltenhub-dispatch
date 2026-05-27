@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Molten Hub Dispatch</title>
   <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/static/skill-payload-form/skill-payload-form.css">
   {{if .GoogleAnalyticsMeasurementID}}
   <script async src="https://www.googletagmanager.com/gtag/js?id={{.GoogleAnalyticsMeasurementID}}"></script>
   <script>
@@ -152,14 +153,30 @@
                 </label>
               </div>
               <p id="skill-name-hint" class="manual-dispatch-skill-hint">Auto-select the first skill of that agent.</p>
-              <label id="skill-payload-field" class="prompt-field" hidden>
+              <section id="skill-payload-field" class="prompt-field" hidden>
                 <span class="manual-dispatch-payload-label-row">
                   <span class="prompt-label">Payload</span>
+                  <fieldset id="skill-payload-mode-field" class="manual-dispatch-payload-mode-toggle" hidden>
+                    <legend class="sr-only">Payload input mode</legend>
+                    <label class="manual-dispatch-payload-mode-option">
+                      <input id="skill-payload-mode-form" type="radio" name="skill_payload_input_mode" value="form" checked>
+                      <span>Form</span>
+                    </label>
+                    <label class="manual-dispatch-payload-mode-option">
+                      <input id="skill-payload-mode-json" type="radio" name="skill_payload_input_mode" value="json">
+                      <span>JSON</span>
+                    </label>
+                  </fieldset>
                 </span>
-                <textarea id="skill-payload-input" class="prompt-text" name="payload" rows="4" data-default-placeholder="Describe the task or paste a JSON payload." placeholder="Describe the task or paste a JSON payload." aria-describedby="skill-payload-hint skill-payload-validation" disabled></textarea>
+                <div id="skill-payload-form-panel" class="manual-dispatch-payload-form-panel" hidden>
+                  <div id="skill-payload-form-root" class="skill-payload-form-root" tabindex="-1" aria-describedby="skill-payload-hint skill-payload-validation"></div>
+                </div>
+                <div id="skill-payload-json-panel" class="manual-dispatch-payload-json-panel">
+                  <textarea id="skill-payload-input" class="prompt-text" name="payload" rows="4" data-default-placeholder="Describe the task or paste a JSON payload." placeholder="Describe the task or paste a JSON payload." aria-describedby="skill-payload-hint skill-payload-validation" disabled></textarea>
+                </div>
                 <span id="skill-payload-hint" class="manual-dispatch-payload-hint">Markdown and JSON are both supported.</span>
                 <span id="skill-payload-validation" class="manual-dispatch-payload-validation" aria-live="polite"></span>
-              </label>
+              </section>
               <input id="skill-payload-format-input" type="hidden" name="payload_format" value="">
               <section class="manual-dispatch-schedule-panel" aria-labelledby="dispatch-schedule-label">
                 <div class="manual-dispatch-schedule-header" data-dispatch-delay-toggle-region>
@@ -510,6 +527,7 @@
     </section>
   </div>
   <script src="/static/lucide.min.js"></script>
+  <script src="/static/skill-payload-form/skill-payload-form.js"></script>
   <script id="initial-connected-agents-data" type="application/json">{{toJSON .State.ConnectedAgents}}</script>
   <script id="initial-pending-tasks-data" type="application/json">{{toJSON .State.PendingTasks}}</script>
   <script id="initial-scheduled-messages-data" type="application/json">{{toJSON .State.ScheduledMessages}}</script>
@@ -532,6 +550,12 @@
       const skillNameSelect = document.getElementById("skill-name-select");
       const skillNameHint = document.getElementById("skill-name-hint");
       const skillPayloadField = document.getElementById("skill-payload-field");
+      const skillPayloadModeField = document.getElementById("skill-payload-mode-field");
+      const skillPayloadModeForm = document.getElementById("skill-payload-mode-form");
+      const skillPayloadModeJSON = document.getElementById("skill-payload-mode-json");
+      const skillPayloadFormPanel = document.getElementById("skill-payload-form-panel");
+      const skillPayloadFormRoot = document.getElementById("skill-payload-form-root");
+      const skillPayloadJSONPanel = document.getElementById("skill-payload-json-panel");
       const skillPayloadInput = document.getElementById("skill-payload-input");
       const skillPayloadHint = document.getElementById("skill-payload-hint");
       const skillPayloadValidation = document.getElementById("skill-payload-validation");
@@ -556,23 +580,18 @@
       const defaultSkillPayloadPlaceholder = skillPayloadInput instanceof HTMLTextAreaElement
         ? trimmedString(skillPayloadInput.getAttribute("data-default-placeholder")) || "Describe the task or paste a JSON payload."
         : "Describe the task or paste a JSON payload.";
-      const setSkillPayloadSchemaText = (schemaText) => {
-        if (!(skillPayloadInput instanceof HTMLTextAreaElement)) {
-          return;
-        }
-        const previousSchemaText = trimmedString(skillPayloadInput.dataset.schemaText);
-        const nextSchemaText = trimmedString(schemaText);
-        skillPayloadInput.readOnly = nextSchemaText !== "";
-        skillPayloadInput.dataset.schemaText = nextSchemaText;
-        if (nextSchemaText !== "") {
-          skillPayloadInput.value = nextSchemaText;
-        } else if (previousSchemaText !== "" && trimmedString(skillPayloadInput.value) === previousSchemaText) {
-          skillPayloadInput.value = "";
-        }
-      };
       const defaultSkillPayloadHint = skillPayloadHint instanceof HTMLElement
         ? trimmedString(skillPayloadHint.textContent) || "Markdown and JSON are both supported."
         : "Markdown and JSON are both supported.";
+      let skillPayloadFormState = {
+        key: "",
+        hasForm: false,
+        mode: "json",
+        schema: null,
+        uischema: undefined,
+        data: null,
+        errors: [],
+      };
       const dispatchTaskClear = document.getElementById("dispatch-task-clear");
       const dispatchDelayToggle = document.getElementById("dispatch-delay-toggle");
       const dispatchDelayToggleRegion = document.querySelector("[data-dispatch-delay-toggle-region]");
@@ -2685,43 +2704,55 @@
         return connectedAgentRefs(agent).some((ref) => ref.toLowerCase() === normalizedTargetRef);
       };
 
+      const skillSchemaAliases = ["schema", "input_schema", "payload_schema", "inputSchema", "payloadSchema", "parameters", "args_schema", "argsSchema"];
+      const skillUISchemaAliases = ["ui_schema", "uischema", "uiSchema"];
+
+      const firstSkillAliasValue = (skill, aliases) => {
+        if (!skill || typeof skill !== "object") {
+          return undefined;
+        }
+        for (const key of aliases) {
+          if (Object.prototype.hasOwnProperty.call(skill, key) && skill[key] != null) {
+            return skill[key];
+          }
+        }
+        return undefined;
+      };
+
+      const formatSkillPayloadText = (value) => {
+        if (value == null) {
+          return "";
+        }
+        if (typeof value === "string") {
+          return trimmedString(value);
+        }
+        if (typeof value === "object") {
+          try {
+            return JSON.stringify(value, null, 2);
+          } catch (_error) {
+            return "";
+          }
+        }
+        return trimmedString(value);
+      };
+
       const connectedAgentSkillEntries = (agent) => {
         const ordered = [];
         const seen = new Map();
-        const formatSkillSchemaPlaceholder = (schema) => {
-          if (schema == null) {
-            return "";
-          }
-          if (typeof schema === "string") {
-            return trimmedString(schema);
-          }
-          if (typeof schema === "object") {
-            try {
-              return JSON.stringify(schema, null, 2);
-            } catch (_error) {
-              return "";
-            }
-          }
-          return trimmedString(schema);
-        };
         const extractSkillSchema = (skill) => {
-          if (!skill || typeof skill !== "object") {
-            return "";
-          }
-          for (const key of ["schema", "input_schema", "payload_schema", "inputSchema", "payloadSchema", "parameters", "args_schema", "argsSchema"]) {
-            const schemaText = formatSkillSchemaPlaceholder(skill[key]);
-            if (schemaText !== "") {
-              return schemaText;
-            }
-          }
-          return "";
+          return firstSkillAliasValue(skill, skillSchemaAliases);
         };
-        const pushSkill = (name, description = "", isDefault = false, schemaText = "") => {
+        const extractSkillUISchema = (skill) => {
+          return firstSkillAliasValue(skill, skillUISchemaAliases);
+        };
+        const pushSkill = (name, description = "", isDefault = false, schema = undefined, uischema = undefined) => {
           const skillName = trimmedString(name);
           if (!skillName) {
             return;
           }
           const key = skillName.toLowerCase();
+          const schemaText = formatSkillPayloadText(schema);
+          const uiSchemaText = formatSkillPayloadText(uischema);
           const existingIndex = seen.get(key);
           if (existingIndex !== undefined) {
             const existing = ordered[existingIndex];
@@ -2729,7 +2760,12 @@
               existing.description = trimmedString(description);
             }
             if (existing && existing.schemaText === "" && trimmedString(schemaText) !== "") {
+              existing.schema = schema;
               existing.schemaText = trimmedString(schemaText);
+            }
+            if (existing && existing.uiSchemaText === "" && trimmedString(uiSchemaText) !== "") {
+              existing.uischema = uischema;
+              existing.uiSchemaText = trimmedString(uiSchemaText);
             }
             if (existing && isDefault) {
               existing.isDefault = true;
@@ -2740,7 +2776,10 @@
           ordered.push({
             name: skillName,
             description: trimmedString(description),
+            schema,
             schemaText: trimmedString(schemaText),
+            uischema,
+            uiSchemaText: trimmedString(uiSchemaText),
             isDefault,
           });
         };
@@ -2756,7 +2795,7 @@
           }
           advertisedSkills.forEach((skill) => {
             if (skill && typeof skill === "object") {
-              pushSkill(skill.name, skill.description, false, extractSkillSchema(skill));
+              pushSkill(skill.name, skill.description, false, extractSkillSchema(skill), extractSkillUISchema(skill));
               return;
             }
             pushSkill(skill);
@@ -2922,6 +2961,164 @@
         return connectedAgentSkillEntries(dispatchState.selectedAgent).find((skill) => skill.name === dispatchState.skillName) || null;
       };
 
+      const skillPayloadFormAPI = () => {
+        const api = window.MoltenHubSkillPayloadForm;
+        if (!api || typeof api !== "object") {
+          return null;
+        }
+        if (
+          typeof api.normalizeSkillSchema !== "function"
+          || typeof api.createDefaultPayload !== "function"
+          || typeof api.prettyJSONStringify !== "function"
+          || typeof api.render !== "function"
+          || typeof api.transitionPayloadMode !== "function"
+        ) {
+          return null;
+        }
+        return api;
+      };
+
+      const skillPayloadSelectionKey = (skillEntry) => {
+        const dispatchState = resolveSelectedDispatchState();
+        if (!skillEntry) {
+          return "";
+        }
+        return [
+          dispatchState.targetRef,
+          dispatchState.skillName,
+          skillEntry.schemaText || "",
+          skillEntry.uiSchemaText || "",
+        ].join("\n");
+      };
+
+      const resetSkillPayloadFormState = () => {
+        const api = skillPayloadFormAPI();
+        if (api && typeof api.unmount === "function" && skillPayloadFormRoot instanceof HTMLElement) {
+          api.unmount(skillPayloadFormRoot);
+        }
+        skillPayloadFormState = {
+          key: "",
+          hasForm: false,
+          mode: "json",
+          schema: null,
+          uischema: undefined,
+          data: null,
+          errors: [],
+        };
+      };
+
+      const setSkillPayloadTextFromData = (data) => {
+        if (!(skillPayloadInput instanceof HTMLTextAreaElement)) {
+          return;
+        }
+        const api = skillPayloadFormAPI();
+        skillPayloadInput.value = api && typeof api.prettyJSONStringify === "function"
+          ? api.prettyJSONStringify(data == null ? {} : data)
+          : JSON.stringify(data == null ? {} : data, null, 2);
+      };
+
+      const syncSkillPayloadModePanels = () => {
+        const formMode = skillPayloadFormState.hasForm && skillPayloadFormState.mode === "form";
+        if (skillPayloadModeField instanceof HTMLElement) {
+          skillPayloadModeField.hidden = !skillPayloadFormState.hasForm;
+        }
+        if (skillPayloadModeForm instanceof HTMLInputElement) {
+          skillPayloadModeForm.checked = formMode;
+          skillPayloadModeForm.disabled = !skillPayloadFormState.hasForm;
+        }
+        if (skillPayloadModeJSON instanceof HTMLInputElement) {
+          skillPayloadModeJSON.checked = skillPayloadFormState.hasForm && !formMode;
+          skillPayloadModeJSON.disabled = !skillPayloadFormState.hasForm;
+        }
+        if (skillPayloadFormPanel instanceof HTMLElement) {
+          skillPayloadFormPanel.hidden = !formMode;
+        }
+        if (skillPayloadJSONPanel instanceof HTMLElement) {
+          skillPayloadJSONPanel.hidden = formMode;
+        }
+        if (skillPayloadInput instanceof HTMLTextAreaElement) {
+          skillPayloadInput.readOnly = false;
+          skillPayloadInput.dataset.schemaText = skillPayloadFormState.hasForm ? formatSkillPayloadText(skillPayloadFormState.schema) : "";
+        }
+      };
+
+      const updateSkillPayloadFormData = (data, errors = []) => {
+        skillPayloadFormState = {
+          ...skillPayloadFormState,
+          data: data == null ? {} : data,
+          errors: Array.isArray(errors) ? errors : [],
+        };
+        setSkillPayloadTextFromData(skillPayloadFormState.data);
+        if (skillPayloadFormatInput instanceof HTMLInputElement) {
+          skillPayloadFormatInput.value = "json";
+        }
+        validateSkillPayload();
+      };
+
+      const renderSkillPayloadForm = (data) => {
+        const api = skillPayloadFormAPI();
+        if (!api || !(skillPayloadFormRoot instanceof HTMLElement) || !skillPayloadFormState.hasForm) {
+          return false;
+        }
+        const result = api.render(skillPayloadFormRoot, {
+          schema: skillPayloadFormState.schema,
+          uischema: skillPayloadFormState.uischema,
+          data: data == null ? skillPayloadFormState.data : data,
+          onChange: ({ data: nextData, errors }) => {
+            updateSkillPayloadFormData(nextData, errors);
+          },
+        });
+        if (!result || result.ok !== true) {
+          return false;
+        }
+        return true;
+      };
+
+      const setSkillPayloadMode = (mode) => {
+        if (!skillPayloadFormState.hasForm) {
+          return false;
+        }
+        const api = skillPayloadFormAPI();
+        if (!api || !(skillPayloadInput instanceof HTMLTextAreaElement)) {
+          return false;
+        }
+        const transition = api.transitionPayloadMode({
+          toMode: mode,
+          textValue: skillPayloadInput.value,
+          currentData: skillPayloadFormState.data,
+          schema: skillPayloadFormState.schema,
+        });
+        if (!transition || transition.ok !== true) {
+          skillPayloadFormState = {
+            ...skillPayloadFormState,
+            mode: "json",
+            errors: [],
+          };
+          syncSkillPayloadModePanels();
+          setSkillPayloadValidationMessage(`JSON is invalid (${transition && transition.error ? transition.error : "unable to parse payload"}).`, true);
+          if (skillPayloadInput instanceof HTMLTextAreaElement) {
+            skillPayloadInput.focus({ preventScroll: true });
+          }
+          return false;
+        }
+        skillPayloadFormState = {
+          ...skillPayloadFormState,
+          mode: transition.mode,
+          data: transition.data,
+          errors: [],
+        };
+        skillPayloadInput.value = transition.textValue;
+        if (skillPayloadFormatInput instanceof HTMLInputElement) {
+          skillPayloadFormatInput.value = "json";
+        }
+        if (transition.mode === "form") {
+          renderSkillPayloadForm(transition.data);
+        }
+        syncSkillPayloadModePanels();
+        validateSkillPayload();
+        return true;
+      };
+
       const escapeJSONStringControlWhitespace = (value) => {
         let output = "";
         let inString = false;
@@ -3023,10 +3220,18 @@
           setSkillPayloadValidationMessage("");
           return true;
         }
-        if (skillPayloadInput.readOnly && trimmedString(skillPayloadInput.dataset.schemaText) !== "") {
-          skillPayloadFormatInput.value = "";
+        if (skillPayloadFormState.hasForm && skillPayloadFormState.mode === "form") {
+          skillPayloadFormatInput.value = "json";
+          if (skillPayloadFormState.errors.length > 0) {
+            const message = skillPayloadFormState.errors.length === 1
+              ? "Resolve the highlighted payload field before dispatching."
+              : `Resolve ${skillPayloadFormState.errors.length} highlighted payload fields before dispatching.`;
+            skillPayloadInput.setCustomValidity(message);
+            setSkillPayloadValidationMessage(message, true);
+            return false;
+          }
           skillPayloadInput.setCustomValidity("");
-          setSkillPayloadValidationMessage("");
+          setSkillPayloadValidationMessage("Generated JSON payload.");
           return true;
         }
 
@@ -3061,17 +3266,58 @@
           if (!selectedSkill) {
             skillPayloadInput.value = "";
             skillPayloadInput.setCustomValidity("");
-            setSkillPayloadSchemaText("");
+            resetSkillPayloadFormState();
             skillPayloadInput.placeholder = defaultSkillPayloadPlaceholder;
           } else {
-            setSkillPayloadSchemaText(skillEntry && skillEntry.schemaText ? skillEntry.schemaText : "");
             skillPayloadInput.placeholder = defaultSkillPayloadPlaceholder;
           }
         }
+        if (selectedSkill && skillEntry) {
+          const api = skillPayloadFormAPI();
+          const key = skillPayloadSelectionKey(skillEntry);
+          const normalized = api && skillEntry.schemaText !== ""
+            ? api.normalizeSkillSchema(skillEntry.schema, skillEntry.uischema)
+            : null;
+          if (normalized && normalized.ok === true) {
+            const keyChanged = key !== skillPayloadFormState.key;
+            const nextData = keyChanged || !skillPayloadFormState.hasForm
+              ? api.createDefaultPayload(normalized.schema)
+              : (skillPayloadFormState.data == null ? api.createDefaultPayload(normalized.schema) : skillPayloadFormState.data);
+            skillPayloadFormState = {
+              key,
+              hasForm: true,
+              mode: keyChanged ? "form" : skillPayloadFormState.mode,
+              schema: normalized.schema,
+              uischema: normalized.uischema,
+              data: nextData,
+              errors: keyChanged ? [] : skillPayloadFormState.errors,
+            };
+            setSkillPayloadTextFromData(nextData);
+            if (skillPayloadFormatInput instanceof HTMLInputElement) {
+              skillPayloadFormatInput.value = "json";
+            }
+            renderSkillPayloadForm(nextData);
+          } else {
+            const hadGeneratedPayload = skillPayloadFormState.hasForm;
+            resetSkillPayloadFormState();
+            if (hadGeneratedPayload && skillPayloadInput instanceof HTMLTextAreaElement) {
+              skillPayloadInput.value = "";
+            }
+          }
+        } else if (!selectedSkill) {
+          resetSkillPayloadFormState();
+        }
+        syncSkillPayloadModePanels();
         if (skillPayloadHint instanceof HTMLElement) {
-          skillPayloadHint.textContent = skillEntry && skillEntry.schemaText
-            ? "Required payload schema shown in readonly payload text box. Markdown and JSON are both supported."
-            : defaultSkillPayloadHint;
+          let hint = defaultSkillPayloadHint;
+          if (skillPayloadFormState.hasForm && skillPayloadFormState.mode === "form") {
+            hint = "Generated from the selected skill schema. Switch to JSON for raw payload editing.";
+          } else if (skillPayloadFormState.hasForm) {
+            hint = "Edit raw JSON for the selected skill schema.";
+          } else if (skillEntry && skillEntry.schemaText) {
+            hint = "Schema form unavailable. Use raw JSON for this payload.";
+          }
+          skillPayloadHint.textContent = hint;
         }
         if (skillPayloadFormatInput instanceof HTMLInputElement && !selectedSkill) {
           skillPayloadFormatInput.value = "";
@@ -3283,7 +3529,7 @@
             : "";
         }
         if (skillPayloadInput instanceof HTMLTextAreaElement) {
-          setSkillPayloadSchemaText("");
+          resetSkillPayloadFormState();
           skillPayloadInput.value = "";
           skillPayloadInput.setCustomValidity("");
         }
@@ -3313,10 +3559,7 @@
       };
 
       const dispatchAnalyticsParams = (dispatchState = resolveSelectedDispatchState()) => {
-        const schemaLocked = skillPayloadInput instanceof HTMLTextAreaElement
-          && skillPayloadInput.readOnly
-          && trimmedString(skillPayloadInput.dataset.schemaText) !== "";
-        const payload = skillPayloadInput instanceof HTMLTextAreaElement && !schemaLocked
+        const payload = skillPayloadInput instanceof HTMLTextAreaElement
           ? trimmedString(skillPayloadInput.value)
           : "";
         const payloadFormat = skillPayloadFormatInput instanceof HTMLInputElement
@@ -3359,7 +3602,7 @@
           return false;
         }
         if (clearForm && skillPayloadInput instanceof HTMLTextAreaElement) {
-          setSkillPayloadSchemaText("");
+          resetSkillPayloadFormState();
           skillPayloadInput.value = "";
         }
         if (clearForm && skillPayloadFormatInput instanceof HTMLInputElement) {
@@ -3368,6 +3611,7 @@
         if (clearForm) {
           setSkillPayloadValidationMessage("");
           setDispatchDelayFieldVisible(false, { clear: true });
+          syncSkillPayloadField();
         }
         const taskID = trimmedString(body && body.task_id);
         const isScheduled = Boolean(body && body.scheduled);
@@ -4477,6 +4721,23 @@
           validateSkillPayload();
         });
       }
+      [skillPayloadModeForm, skillPayloadModeJSON].forEach((node) => {
+        if (!(node instanceof HTMLInputElement)) {
+          return;
+        }
+        node.addEventListener("change", () => {
+          if (!node.checked) {
+            return;
+          }
+          const changed = setSkillPayloadMode(node.value);
+          trackAppEvent("dispatch_payload_mode_select", {
+            app_area: "dispatch",
+            mode: node.value,
+            changed,
+            has_schema: skillPayloadFormState.hasForm,
+          });
+        });
+      });
       if (dispatchDelayEnabled instanceof HTMLInputElement) {
         dispatchDelayEnabled.addEventListener("change", () => {
           syncScheduleModeState();
@@ -4587,7 +4848,9 @@
               ...dispatchAnalyticsParams(dispatchState),
               result: "invalid_payload",
             });
-            if (skillPayloadInput instanceof HTMLTextAreaElement) {
+            if (skillPayloadFormState.hasForm && skillPayloadFormState.mode === "form" && skillPayloadFormRoot instanceof HTMLElement) {
+              skillPayloadFormRoot.focus({ preventScroll: true });
+            } else if (skillPayloadInput instanceof HTMLTextAreaElement) {
               skillPayloadInput.reportValidity();
               skillPayloadInput.focus({ preventScroll: true });
             }
@@ -4649,10 +4912,6 @@
               formData.set("skill_name", dispatchState.skillName);
             } else {
               formData.delete("skill_name");
-            }
-            if (skillPayloadInput instanceof HTMLTextAreaElement && skillPayloadInput.readOnly && trimmedString(skillPayloadInput.dataset.schemaText) !== "") {
-              formData.delete("payload");
-              formData.delete("payload_format");
             }
             dispatchRequestInFlight = true;
             setDispatchSubmitBusy(true);
