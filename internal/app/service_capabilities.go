@@ -428,8 +428,8 @@ func connectedAgentMetadataFromCapabilityEntry(entry map[string]any, sources []m
 		Harness:         firstCapabilityString(sources, "harness"),
 		Presence:        connectedAgentPresenceFromCapabilitySources(sources),
 	}
-	if skills := capabilitySkills(entry, nestedMap(entry, "metadata"), nestedMap(entry, "agent")); len(skills) > 0 {
-		metadata.AdvertisedSkills = SkillsToMetadata(skills)
+	if skills := capabilitySkillMetadata(entry, nestedMap(entry, "metadata"), nestedMap(entry, "agent")); len(skills) > 0 {
+		metadata.AdvertisedSkills = skills
 	}
 	if metadataEmpty(metadata) {
 		return nil
@@ -514,6 +514,73 @@ func SkillsToMetadata(skills []Skill) []map[string]any {
 		metadata = append(metadata, entry)
 	}
 	return metadata
+}
+
+func capabilitySkillMetadata(primary map[string]any, metadata map[string]any, agent map[string]any) []map[string]any {
+	for _, source := range []map[string]any{primary, metadata, agent} {
+		for _, current := range []map[string]any{source, nestedMap(source, "metadata")} {
+			if current == nil {
+				continue
+			}
+			for _, key := range []string{"advertised_skills", "skills"} {
+				if skills := skillMetadataFromAny(current[key]); len(skills) > 0 {
+					return skills
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func skillMetadataFromAny(value any) []map[string]any {
+	skills := make([]map[string]any, 0)
+	appendSkillMap := func(skill map[string]any) {
+		name := strings.TrimSpace(stringFromMap(skill, "name"))
+		if name == "" {
+			return
+		}
+		entry := make(map[string]any, len(skill))
+		for key, value := range skill {
+			entry[key] = value
+		}
+		entry["name"] = name
+		if description := strings.TrimSpace(stringFromMap(skill, "description")); description != "" {
+			entry["description"] = description
+		}
+		skills = append(skills, entry)
+	}
+	appendSkill := func(item any) {
+		switch typed := item.(type) {
+		case map[string]any:
+			appendSkillMap(typed)
+		case Skill:
+			if metadata := SkillsToMetadata([]Skill{typed}); len(metadata) == 1 {
+				skills = append(skills, metadata[0])
+			}
+		case string:
+			name := strings.TrimSpace(typed)
+			if name != "" {
+				skills = append(skills, map[string]any{"name": name})
+			}
+		}
+	}
+
+	switch typed := value.(type) {
+	case []any:
+		for _, item := range typed {
+			appendSkill(item)
+		}
+	case []map[string]any:
+		for _, item := range typed {
+			appendSkill(item)
+		}
+	case []Skill:
+		for _, item := range typed {
+			appendSkill(item)
+		}
+	}
+
+	return skills
 }
 
 func presenceEmpty(presence *hub.AgentPresence) bool {

@@ -4721,7 +4721,16 @@ func TestRefreshConnectedAgentsRetainsPeerCatalogSkillsWhenTalkablePeersExist(t 
 				"uri":        "https://hub.example/v1/agents/peer-uuid",
 				"metadata": map[string]any{
 					"skills": []map[string]any{
-						{"name": "review_openapi", "description": "Review Hub API integration behavior."},
+						{
+							"name":        "review_openapi",
+							"description": "Review Hub API integration behavior.",
+							"schema": map[string]any{
+								"type": "object",
+								"properties": map[string]any{
+									"prompt": map[string]any{"type": "string"},
+								},
+							},
+						},
 					},
 				},
 			},
@@ -4747,6 +4756,13 @@ func TestRefreshConnectedAgentsRetainsPeerCatalogSkillsWhenTalkablePeersExist(t 
 	}
 	if skills := ConnectedAgentSkills(agents[0]); len(skills) != 1 || skills[0].Name != "review_openapi" {
 		t.Fatalf("expected peer skill catalog skills to survive talkable peer fallback, got %#v", skills)
+	}
+	if agents[0].Metadata == nil || len(agents[0].Metadata.AdvertisedSkills) != 1 {
+		t.Fatalf("expected advertised skill metadata with schema, got %#v", agents[0].Metadata)
+	}
+	schema, ok := agents[0].Metadata.AdvertisedSkills[0]["schema"].(map[string]any)
+	if !ok || schema["type"] != "object" {
+		t.Fatalf("expected advertised skill schema to survive normalization, got %#v", agents[0].Metadata.AdvertisedSkills[0])
 	}
 }
 

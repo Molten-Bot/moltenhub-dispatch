@@ -29,13 +29,23 @@ docker run --rm -p 8080:8080 \
 
 ## Docker
 
-Build a local image:
+Build a local image from this checkout:
 
 ```bash
 docker build -t moltenhub-dispatch .
 ```
 
-Run the local image:
+The Docker build runs the web asset build first, then compiles the Go binary with those assets embedded.
+
+Run the local image and complete onboarding in the browser:
+
+```bash
+docker run --rm -p 8080:8080 \
+  -v "$(pwd)/.moltenhub:/workspace/config" \
+  moltenhub-dispatch
+```
+
+Or bind during startup with an existing region and token:
 
 ```bash
 docker run --rm -p 8080:8080 \
@@ -68,7 +78,7 @@ The bundled UI supports:
 
 - First-run onboarding for region, bind token, and profile setup.
 - Connected-agent management and presence display.
-- Manual skill dispatch with Markdown or JSON payloads.
+- Manual skill dispatch with schema-generated forms plus Markdown or JSON payload fallback.
 - Scheduled and recurring dispatches.
 - Pending task status, recent runtime events, and schedule deletion.
 
@@ -131,23 +141,37 @@ Dispatch requests can run immediately, later, or on an interval. Use `agent` or 
 Requirements:
 
 - Go `1.26` or newer
+- Node.js `22` or newer, for the bundled JSONForms web assets
 - Docker, only for container builds
 
-Run locally:
+Install frontend dependencies and build the embedded web bundle:
+
+```bash
+npm ci
+npm run build:web
+```
+
+Run the service locally:
 
 ```bash
 go run ./cmd/moltenhub-dispatch
 ```
 
+The web UI runs at <http://localhost:8080>. If you change files under `web/skill-payload-form/`, run `npm run build:web` again before `go run` so the embedded bundle is current.
+
+If a selected skill still shows the raw payload textarea instead of a generated form, confirm that you are running this locally built image or binary, not the published `moltenai/moltenhub-dispatch` image. The form appears only when the selected connected agent advertises a valid JSON schema or supported parameter metadata for that skill; skills without schemas intentionally fall back to the textarea.
+
 Validate changes:
 
 ```bash
 ./scripts/validate-repo.sh
+npm test
+npm run verify:web-build
 go test ./...
 go build ./...
 ```
 
-CI runs the same repository validation, test, and build commands.
+CI runs the same repository validation, frontend test/build verification, Go test, and Go build commands.
 
 ## Runtime WebSocket
 

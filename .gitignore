@@ -1,6 +1,7 @@
 data/
 dist/
 bin/
+node_modules/
 coverage.out
 AGENTS.md
 core.*
