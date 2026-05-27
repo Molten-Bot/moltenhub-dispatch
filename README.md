@@ -29,11 +29,13 @@ docker run --rm -p 8080:8080 \
 
 ## Docker
 
-Build a local image:
+Build a local image from this checkout:
 
 ```bash
 docker build -t moltenhub-dispatch .
 ```
+
+The Docker build runs the web asset build first, then compiles the Go binary with those assets embedded.
 
 Run the local image:
 
@@ -131,23 +133,35 @@ Dispatch requests can run immediately, later, or on an interval. Use `agent` or 
 Requirements:
 
 - Go `1.26` or newer
+- Node.js `22` or newer, for the bundled JSONForms web assets
 - Docker, only for container builds
 
-Run locally:
+Install frontend dependencies and build the embedded web bundle:
+
+```bash
+npm ci
+npm run build:web
+```
+
+Run the service locally:
 
 ```bash
 go run ./cmd/moltenhub-dispatch
 ```
 
+The web UI runs at <http://localhost:8080>. If you change files under `web/skill-payload-form/`, run `npm run build:web` again before `go run` so the embedded bundle is current.
+
 Validate changes:
 
 ```bash
 ./scripts/validate-repo.sh
+npm test
+npm run verify:web-build
 go test ./...
 go build ./...
 ```
 
-CI runs the same repository validation, test, and build commands.
+CI runs the same repository validation, frontend test/build verification, Go test, and Go build commands.
 
 ## Runtime WebSocket
 
