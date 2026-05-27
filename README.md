@@ -159,6 +159,8 @@ go run ./cmd/moltenhub-dispatch
 
 The web UI runs at <http://localhost:8080>. If you change files under `web/skill-payload-form/`, run `npm run build:web` again before `go run` so the embedded bundle is current.
 
+If a selected skill still shows the raw payload textarea instead of a generated form, confirm that you are running this locally built image or binary, not the published `moltenai/moltenhub-dispatch` image. The form appears only when the selected connected agent advertises a valid JSON schema or supported parameter metadata for that skill; skills without schemas intentionally fall back to the textarea.
+
 Validate changes:
 
 ```bash

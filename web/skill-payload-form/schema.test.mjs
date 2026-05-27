@@ -5,6 +5,7 @@ import {
   createDefaultPayload,
   extractSkillSchemaPayload,
   normalizeSkillSchema,
+  parameterMetadataToJSONSchema,
   transitionPayloadMode,
 } from "./schema.mjs";
 
@@ -34,6 +35,36 @@ test("normalizeSkillSchema rejects invalid schema input", () => {
 
   assert.equal(result.ok, false);
   assert.match(result.error, /valid JSON/);
+});
+
+test("parameterMetadataToJSONSchema converts advertised parameter metadata", () => {
+  assert.deepEqual(parameterMetadataToJSONSchema({
+    required: [{ name: "repo", description: "Repository URL" }],
+    optional: [
+      { name: "prompt", description: "Task prompt" },
+      { name: "repos", description: "Repository URLs" },
+    ],
+  }), {
+    type: "object",
+    properties: {
+      repo: { type: "string", description: "Repository URL" },
+      prompt: { type: "string", description: "Task prompt" },
+      repos: { type: "array", items: { type: "string" }, description: "Repository URLs" },
+    },
+    required: ["repo"],
+  });
+});
+
+test("normalizeSkillSchema accepts advertised parameter metadata", () => {
+  const result = normalizeSkillSchema({
+    format: "json",
+    optional: [{ name: "prompt", description: "Task prompt" }],
+    secret_policy: "forbidden",
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.schema.type, "object");
+  assert.deepEqual(result.schema.properties.prompt, { type: "string", description: "Task prompt" });
 });
 
 test("createDefaultPayload uses root and nested schema defaults", () => {

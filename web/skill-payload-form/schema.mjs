@@ -61,6 +61,62 @@ export const parseMaybeJSONString = (value, label = "value") => {
   }
 };
 
+const parameterEntries = (value) => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((entry) => {
+      if (typeof entry === "string") {
+        return { name: entry.trim(), description: "" };
+      }
+      if (!isPlainObject(entry)) {
+        return { name: "", description: "" };
+      }
+      return {
+        name: typeof entry.name === "string" ? entry.name.trim() : "",
+        description: typeof entry.description === "string" ? entry.description.trim() : "",
+      };
+    })
+    .filter((entry) => entry.name !== "");
+};
+
+const schemaForParameter = (entry) => {
+  const normalizedName = entry.name.toLowerCase();
+  const description = entry.description || undefined;
+  if (["images", "repos", "reviewers"].includes(normalizedName)) {
+    return {
+      type: "array",
+      items: { type: "string" },
+      ...(description ? { description } : {}),
+    };
+  }
+  return {
+    type: "string",
+    ...(description ? { description } : {}),
+  };
+};
+
+export const parameterMetadataToJSONSchema = (value) => {
+  if (!isPlainObject(value)) {
+    return null;
+  }
+  const required = parameterEntries(value.required);
+  const optional = parameterEntries(value.optional);
+  if (required.length === 0 && optional.length === 0) {
+    return null;
+  }
+  const properties = {};
+  for (const entry of [...required, ...optional]) {
+    properties[entry.name] = schemaForParameter(entry);
+  }
+  return {
+    type: "object",
+    properties,
+    ...(required.length > 0 ? { required: required.map((entry) => entry.name) } : {}),
+  };
+};
+
 export const normalizeJSONSchema = (schemaInput) => {
   const parsed = parseMaybeJSONString(schemaInput, "schema");
   if (!parsed.ok) {
@@ -69,7 +125,8 @@ export const normalizeJSONSchema = (schemaInput) => {
   if (!isPlainObject(parsed.value)) {
     return { ok: false, schema: null, error: "schema must be a JSON object" };
   }
-  const schema = deepClone(parsed.value);
+  const parameterSchema = parameterMetadataToJSONSchema(parsed.value);
+  const schema = parameterSchema || deepClone(parsed.value);
   if (!schema.type && isPlainObject(schema.properties)) {
     schema.type = "object";
   }
