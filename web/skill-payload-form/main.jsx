@@ -7,6 +7,7 @@ import "./skill-payload-form.css";
 import {
   createDefaultPayload,
   deepClone,
+  extractSkillSchemaPayload,
   normalizeSkillSchema,
   prettyJSONStringify,
   transitionPayloadMode,
@@ -76,6 +77,7 @@ const unmountForm = (element) => {
 
 window.MoltenHubSkillPayloadForm = {
   createDefaultPayload,
+  extractSkillSchemaPayload,
   normalizeSkillSchema,
   prettyJSONStringify,
   render: renderForm,

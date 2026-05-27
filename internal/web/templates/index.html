@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Molten Hub Dispatch</title>
   <link rel="stylesheet" href="/styles.css">
-  <link rel="stylesheet" href="/static/skill-payload-form/skill-payload-form.css">
+  <link rel="stylesheet" href="/static/skill-payload-form/skill-payload-form.css?v=jsonforms-20260527-2">
   {{if .GoogleAnalyticsMeasurementID}}
   <script async src="https://www.googletagmanager.com/gtag/js?id={{.GoogleAnalyticsMeasurementID}}"></script>
   <script>
@@ -527,7 +527,7 @@
     </section>
   </div>
   <script src="/static/lucide.min.js"></script>
-  <script src="/static/skill-payload-form/skill-payload-form.js"></script>
+  <script src="/static/skill-payload-form/skill-payload-form.js?v=jsonforms-20260527-2"></script>
   <script id="initial-connected-agents-data" type="application/json">{{toJSON .State.ConnectedAgents}}</script>
   <script id="initial-pending-tasks-data" type="application/json">{{toJSON .State.PendingTasks}}</script>
   <script id="initial-scheduled-messages-data" type="application/json">{{toJSON .State.ScheduledMessages}}</script>
@@ -2251,7 +2251,10 @@
           return [];
         }
         try {
-          const parsed = JSON.parse(node.textContent || "[]");
+          let parsed = JSON.parse(node.textContent || "[]");
+          if (typeof parsed === "string") {
+            parsed = JSON.parse(parsed);
+          }
           return Array.isArray(parsed) ? parsed : [];
         } catch (_error) {
           return [];
@@ -2740,7 +2743,9 @@
         const ordered = [];
         const seen = new Map();
         const extractSkillSchema = (skill) => {
-          return firstSkillAliasValue(skill, skillSchemaAliases);
+          const schema = firstSkillAliasValue(skill, skillSchemaAliases);
+          const nestedSchema = firstSkillAliasValue(schema, skillSchemaAliases);
+          return nestedSchema === undefined ? schema : nestedSchema;
         };
         const extractSkillUISchema = (skill) => {
           return firstSkillAliasValue(skill, skillUISchemaAliases);

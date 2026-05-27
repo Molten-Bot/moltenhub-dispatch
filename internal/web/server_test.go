@@ -1331,6 +1331,9 @@ func TestHandleIndexIncludesSkillSchemaPlaceholderSupport(t *testing.T) {
 	if !strings.Contains(body, `const extractSkillSchema = (skill) => {`) {
 		t.Fatalf("expected skill schema extraction helper in client script, body=%s", body)
 	}
+	if !strings.Contains(body, `const nestedSchema = firstSkillAliasValue(schema, skillSchemaAliases);`) {
+		t.Fatalf("expected nested parameter schema extraction in client script, body=%s", body)
+	}
 	if !strings.Contains(body, `const skillSchemaAliases = ["schema", "input_schema", "payload_schema", "inputSchema", "payloadSchema", "parameters", "args_schema", "argsSchema"];`) {
 		t.Fatalf("expected schema alias scan in client script, body=%s", body)
 	}
@@ -4712,6 +4715,9 @@ func TestHandleIndexRendersConnectedAgentsRefreshPanel(t *testing.T) {
 	}
 	if !strings.Contains(body, `id="initial-connected-agents-data" type="application/json"`) {
 		t.Fatalf("expected serialized connected-agents bootstrap payload script, body=%s", body)
+	}
+	if !strings.Contains(body, `if (typeof parsed === "string")`) {
+		t.Fatalf("expected initial JSON bootstrap parser to handle double-encoded arrays, body=%s", body)
 	}
 	if !strings.Contains(body, `const selectConnectedAgentTarget = (targetRef, options = {}) => {`) {
 		t.Fatalf("expected connected agent selector click handler, body=%s", body)

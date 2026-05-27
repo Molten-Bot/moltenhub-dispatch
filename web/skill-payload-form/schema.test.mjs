@@ -22,6 +22,29 @@ test("extractSkillSchemaPayload reads schema and ui schema aliases", () => {
   });
 });
 
+test("extractSkillSchemaPayload reads nested parameter schema aliases", () => {
+  const skill = {
+    name: "run",
+    parameters: {
+      format: "json",
+      schema: {
+        properties: {
+          prompt: { type: "string" },
+        },
+      },
+    },
+  };
+
+  assert.deepEqual(extractSkillSchemaPayload(skill), {
+    schema: {
+      properties: {
+        prompt: { type: "string" },
+      },
+    },
+    uischema: undefined,
+  });
+});
+
 test("normalizeSkillSchema parses string schemas and defaults object type from properties", () => {
   const result = normalizeSkillSchema(`{"properties":{"prompt":{"type":"string"}}}`);
 
@@ -60,6 +83,20 @@ test("normalizeSkillSchema accepts advertised parameter metadata", () => {
     format: "json",
     optional: [{ name: "prompt", description: "Task prompt" }],
     secret_policy: "forbidden",
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.schema.type, "object");
+  assert.deepEqual(result.schema.properties.prompt, { type: "string", description: "Task prompt" });
+});
+
+test("normalizeSkillSchema accepts nested advertised parameter metadata", () => {
+  const result = normalizeSkillSchema({
+    format: "json",
+    schema: {
+      optional: [{ name: "prompt", description: "Task prompt" }],
+      secret_policy: "forbidden",
+    },
   });
 
   assert.equal(result.ok, true);

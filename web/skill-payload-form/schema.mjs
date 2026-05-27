@@ -38,8 +38,16 @@ export const firstAliasValue = (source, aliases) => {
   return undefined;
 };
 
+export const nestedSchemaValue = (value) => {
+  if (!isPlainObject(value)) {
+    return value;
+  }
+  const nested = firstAliasValue(value, schemaAliases);
+  return nested === undefined ? value : nested;
+};
+
 export const extractSkillSchemaPayload = (skill) => ({
-  schema: firstAliasValue(skill, schemaAliases),
+  schema: nestedSchemaValue(firstAliasValue(skill, schemaAliases)),
   uischema: firstAliasValue(skill, uiSchemaAliases),
 });
 
@@ -117,6 +125,20 @@ export const parameterMetadataToJSONSchema = (value) => {
   };
 };
 
+const hasJSONSchemaShape = (value) => {
+  if (!isPlainObject(value)) {
+    return false;
+  }
+  return Boolean(
+    value.type
+    || value.properties
+    || value.anyOf
+    || value.oneOf
+    || value.allOf
+    || value.$ref
+  );
+};
+
 export const normalizeJSONSchema = (schemaInput) => {
   const parsed = parseMaybeJSONString(schemaInput, "schema");
   if (!parsed.ok) {
@@ -126,7 +148,17 @@ export const normalizeJSONSchema = (schemaInput) => {
     return { ok: false, schema: null, error: "schema must be a JSON object" };
   }
   const parameterSchema = parameterMetadataToJSONSchema(parsed.value);
-  const schema = parameterSchema || deepClone(parsed.value);
+  const schemaCandidate = (parameterSchema || hasJSONSchemaShape(parsed.value))
+    ? parsed.value
+    : nestedSchemaValue(parsed.value);
+  const nestedParsed = parseMaybeJSONString(schemaCandidate, "schema");
+  if (!nestedParsed.ok) {
+    return { ok: false, schema: null, error: nestedParsed.error };
+  }
+  if (!isPlainObject(nestedParsed.value)) {
+    return { ok: false, schema: null, error: "schema must be a JSON object" };
+  }
+  const schema = parameterSchema || parameterMetadataToJSONSchema(nestedParsed.value) || deepClone(nestedParsed.value);
   if (!schema.type && isPlainObject(schema.properties)) {
     schema.type = "object";
   }
