@@ -37,7 +37,15 @@ docker build -t moltenhub-dispatch .
 
 The Docker build runs the web asset build first, then compiles the Go binary with those assets embedded.
 
-Run the local image:
+Run the local image and complete onboarding in the browser:
+
+```bash
+docker run --rm -p 8080:8080 \
+  -v "$(pwd)/.moltenhub:/workspace/config" \
+  moltenhub-dispatch
+```
+
+Or bind during startup with an existing region and token:
 
 ```bash
 docker run --rm -p 8080:8080 \
