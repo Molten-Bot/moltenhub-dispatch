@@ -3393,8 +3393,13 @@ func TestBundledLogoUsesOriginalFill(t *testing.T) {
 	}
 
 	content := string(data)
-	if !strings.Contains(content, `fill="#0091b0"`) || !strings.Contains(content, `data-originalfillcolor="#7b61ff"`) {
+	if !strings.Contains(content, `fill: #004c4c;`) {
 		t.Fatalf("expected bundled logo to keep original colors, content=%s", content)
+	}
+	for _, disallowed := range []string{`#ec4899`, `#db2777`, `#0091b0`, `#7b61ff`} {
+		if strings.Contains(content, disallowed) {
+			t.Fatalf("expected bundled logo to avoid stale theme color %q, content=%s", disallowed, content)
+		}
 	}
 }
 
